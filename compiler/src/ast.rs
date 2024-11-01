@@ -1,3 +1,3 @@
 
 
-mod outer;
+pub mod outer;

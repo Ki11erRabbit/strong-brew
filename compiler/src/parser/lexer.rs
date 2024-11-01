@@ -185,6 +185,12 @@ impl SpannedLexerError {
     }
 }
 
+impl std::fmt::Display for SpannedLexerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}..{}] {}", self.start, self.end, self.error)
+    }
+}
+
 pub enum LexerError {
     UnexpectedCharacter(char),
     InvalidIdentifier(usize, usize),
@@ -197,6 +203,26 @@ pub enum LexerError {
     Eof,
 }
 
+impl std::fmt::Display for LexerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LexerError::UnexpectedCharacter(c) => write!(f, "Unexpected character '{}'", c),
+            LexerError::InvalidIdentifier(start, end) => write!(f, "Invalid identifier from {} to {}", start, end),
+            LexerError::UnexpectedEndOfInput => write!(f, "Unexpected end of input"),
+            LexerError::UnclosedStringLiteral => write!(f, "Unclosed string literal"),
+            LexerError::UnclosedCharLiteral => write!(f, "Unclosed char literal"),
+            LexerError::UnclosedComment => write!(f, "Unclosed comment"),
+            LexerError::UnknownError => write!(f, "Unknown error"),
+            LexerError::ErrorCollection(errors) => {
+                for error in errors {
+                    writeln!(f, "{}", error)?;
+                }
+                Ok(())
+            }
+            LexerError::Eof => write!(f, "End of file"),
+        }
+    }
+}
 
 pub type LexerResult<'a> = Result<SpannedToken<'a>, SpannedLexerError>;
 
@@ -259,7 +285,7 @@ impl<'a> TokenLexer<'a> {
                             break;
                         }
                     }
-                    Ok(SpannedToken::new(Token::Comment, start, end))
+                    self.next_token_inner()
                 } else if let Some((_, '*')) = self.chars.peek() {
                     let mut end = start + 2;
                     let mut found_star = false;
@@ -274,7 +300,7 @@ impl<'a> TokenLexer<'a> {
                         }
                     }
                     if found_star {
-                        Ok(SpannedToken::new(Token::Comment, start, end))
+                        self.next_token_inner()
                     } else {
                         Err(SpannedLexerError::new(LexerError::UnclosedComment, start, end))
                     }

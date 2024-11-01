@@ -1,5 +1,5 @@
 use crate::parser::lexer::{Token, TokenLexer, SpannedLexerError};
-use crate::ast::outer;
+use crate::ast::outer::*;
 
 grammar<'a>(input: &'a str);
 
@@ -8,7 +8,7 @@ extern {
     type Location = usize;
     type Error = SpannedLexerError;
     
-    enum Tok<'a> {
+    enum Token<'a> {
         "if" => Token::If,
         "else" => Token::Else,
         "fn" => Token::Fun,
@@ -36,11 +36,11 @@ extern {
         "bool" => Token::Bool,
         "True" => Token::True,
         "False" => Token::False,
-        "int_lit" => Token::IntLiteral,
-        "float_lit" => Token::FloatLiteral,
-        "char_lit" => Token::CharLiteral,
-        "string_lit" => Token::StringLiteral,
-        "identifier" => Token::Identifier,
+        Int_lit => Token::IntLiteral(<&'a str>),
+        Float_lit => Token::FloatLiteral(<&'a str>),
+        Char_lit => Token::CharLiteral(<&'a str>),
+        String_lit => Token::StringLiteral(<&'a str>),
+        Identifier => Token::Identifier(<&'a str>),
         "+" => Token::Plus,
         "-" => Token::Minus,
         "*" => Token::Multiply,
@@ -70,7 +70,7 @@ extern {
         "|" => Token::Bar,
         "." => Token::Dot,
         "->" => Token::Arrow,
-        ";" => Token::LineBreak,
+        Lb => Token::LineBreak,
         "comment" => Token::Comment,
         "eof" => Token::Eof,
     }
@@ -78,20 +78,28 @@ extern {
 
 
 pub File: File<'a> = {
-    "module" <p:Path> ";" <decs:(";"* <Decl> ";")*> => File::new(p, decs),
+    "module" <p:Path> Lb <decs:(Lb* <Decl> Lb)*> Lb* => File::new(p, decs),
 };
 
 pub Path: PathName<'a> = {
-    <start: @L> <id:"identifier"> <rest:("::" <"identifier">)*> <end: @R> => {
+    <start: @L> <id:Identifier> <rest:("::" <Identifier>)*> <end: @R> => {
+        /*let id = match id {
+            Token::Identifier(id) => id,
+            _ => unreachable!(),
+        };*/
+               
         let mut segments = vec![id];
-        for r in rest {
-            segments.push(r);
+        for r in rest.into_iter() {
+            //match r {
+                segments.push(id);
+             //   _ => unreachable!(),
+            //}
         }
         
         PathName::new(segments, start, end)
     },
 };
 
-pub Decl: Decl<'a> = {
+pub Decl: TopLevelStatement<'a> = {
     <start: @L> "import" <p:Path> <end: @R> => Import::new(p, start, end),
 };
