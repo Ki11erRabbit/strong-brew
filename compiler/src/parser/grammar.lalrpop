@@ -1,0 +1,97 @@
+use crate::parser::lexer::{Token, TokenLexer, SpannedLexerError};
+use crate::ast::outer;
+
+grammar<'a>(input: &'a str);
+
+
+extern {
+    type Location = usize;
+    type Error = SpannedLexerError;
+    
+    enum Tok<'a> {
+        "if" => Token::If,
+        "else" => Token::Else,
+        "fn" => Token::Fun,
+        "return" => Token::Return,
+        "break" => Token::Break,
+        "continue" => Token::Continue,
+        "struct" => Token::Struct,
+        "enum" => Token::Enum,
+        "let" => Token::Let,
+        "mut" => Token::Mut,
+        "const" => Token::Const,
+        "import" => Token::Import,
+        "module" => Token::Module,
+        "pub" => Token::Pub,
+        "extern" => Token::Extern,
+        "i8" => Token::I8,
+        "i16" => Token::I16,
+        "i32" => Token::I32,
+        "i64" => Token::I64,
+        "int" => Token::Int,
+        "nat" => Token::Nat,
+        "f32" => Token::F32,
+        "f64" => Token::F64,
+        "char" => Token::Char,
+        "bool" => Token::Bool,
+        "True" => Token::True,
+        "False" => Token::False,
+        "int_lit" => Token::IntLiteral,
+        "float_lit" => Token::FloatLiteral,
+        "char_lit" => Token::CharLiteral,
+        "string_lit" => Token::StringLiteral,
+        "identifier" => Token::Identifier,
+        "+" => Token::Plus,
+        "-" => Token::Minus,
+        "*" => Token::Multiply,
+        "/" => Token::Divide,
+        "%" => Token::Modulo,
+        "!" => Token::Not,
+        "||" => Token::Or,
+        "&&" => Token::And,
+        "==" => Token::Equals,
+        "!=" => Token::NotEquals,
+        "<=" => Token::LessThanOrEqual,
+        ">=" => Token::GreaterThanOrEqual,
+        "=" => Token::Assign,
+        "++" => Token::Concat,
+        "::" => Token::Scope,
+        "{" => Token::BraceOpen,
+        "}" => Token::BraceClose,
+        "(" => Token::ParenOpen,
+        ")" => Token::ParenClose,
+        "[" => Token::BracketOpen,
+        "]" => Token::BracketClose,
+        "<" => Token::AngleOpen,
+        ">" => Token::AngleClose,
+        "," => Token::Comma,
+        ":" => Token::Colon,
+        "?" => Token::QMark,
+        "|" => Token::Bar,
+        "." => Token::Dot,
+        "->" => Token::Arrow,
+        ";" => Token::LineBreak,
+        "comment" => Token::Comment,
+        "eof" => Token::Eof,
+    }
+}
+
+
+pub File: File<'a> = {
+    "module" <p:Path> ";" <decs:(";"* <Decl> ";")*> => File::new(p, decs),
+};
+
+pub Path: PathName<'a> = {
+    <start: @L> <id:"identifier"> <rest:("::" <"identifier">)*> <end: @R> => {
+        let mut segments = vec![id];
+        for r in rest {
+            segments.push(r);
+        }
+        
+        PathName::new(segments, start, end)
+    },
+};
+
+pub Decl: Decl<'a> = {
+    <start: @L> "import" <p:Path> <end: @R> => Import::new(p, start, end),
+};

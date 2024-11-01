@@ -1,0 +1,339 @@
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct File<'a> {
+    pub path: PathName<'a>,
+    pub content: Vec<TopLevelStatement<'a>>,
+}
+
+impl File<'_> {
+    pub fn new<'a>(path: PathName<'a>, content: Vec<TopLevelStatement<'a>>) -> File<'a> {
+        File { path, content }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct PathName<'a> {
+    pub segments: Vec<&'a str>,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl PathName<'_> {
+    pub fn new<'a>(segments: Vec<&'a str>, start: usize, end: usize) -> PathName<'a> {
+        PathName { segments, start, end }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum TopLevelStatement<'a> {
+    Function(Function<'a>),
+    Struct(Struct<'a>),
+    Enum(Enum<'a>),
+    Const(Const<'a>),
+    Import(Import<'a>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Function<'a> {
+    Regular {
+        visibility: Visibility,
+        name: PathName<'a>,
+        generic_params: Vec<GenericParam<'a>>,
+        params: Vec<Param<'a>>,
+        return_type: Option<Expression<'a>>,
+        body: Expression<'a>,
+        start: usize,
+        end: usize,
+    },
+    Extern {
+        visibility: Visibility,
+        language: &'a str,
+        name: PathName<'a>,
+        generic_params: Vec<GenericParam<'a>>,
+        params: Vec<Param<'a>>,
+        return_type: Option<Expression<'a>>,
+        body: &'a str,
+        start: usize,
+        end: usize,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Struct<'a> {
+    pub visibility: Visibility,
+    pub name: &'a str,
+    pub generic_params: Vec<GenericParam<'a>>,
+    pub fields: Vec<Field<'a>>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Field<'a> {
+    pub visibility: Visibility,
+    pub name: &'a str,
+    pub ty: Type<'a>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Enum<'a> {
+    pub visibility: Visibility,
+    pub name: &'a str,
+    pub generic_params: Vec<GenericParam<'a>>,
+    pub variants: Vec<Variant<'a>>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Variant<'a> {
+    pub name: &'a str,
+    pub fields: Vec<Field<'a>>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Const<'a> {
+    pub visibility: Visibility,
+    pub name: PathName<'a>,
+    pub value: Expression<'a>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Import<'a> {
+    pub path: PathName<'a>,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Import<'_> {
+    pub fn new<'a>(path: PathName<'a>, start: usize, end: usize) -> TopLevelStatement<'a> {
+        TopLevelStatement::Import(Import { path, start, end })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct GenericParam<'a> {
+    pub name: &'a str,
+    pub constraints: Vec<Constraint<'a>>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Constraint<'a> {
+    ty: Type<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Param<'a> {
+    pub name: &'a str,
+    pub ty: Type<'a>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Type<'a> {
+    Builtin(BuiltinType),
+    Simple {
+        name: PathName<'a>,
+        start: usize,
+        end: usize,
+    },
+    Generic {
+        name: PathName<'a>,
+        params: Vec<Type<'a>>,
+        start: usize,
+        end: usize,
+    },
+    Expression {
+        expr: Box<Expression<'a>>,
+        start: usize,
+        end: usize,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum BuiltinType {
+    I8,
+    I16,
+    I32,
+    I64,
+    Int,
+    Nat,
+    F32,
+    F64,
+    Bool,
+    Char,
+    Unit,
+    Never,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Expression<'a> {
+    Sequence(Box<Expression<'a>>, Option<Box<Expression<'a>>>),
+    Variable(&'a str),
+    Type(Type<'a>),
+    Literal(Literal<'a>),
+    Call(Call<'a>),
+    Return(Box<Expression<'a>>),
+    Closure(Closure<'a>),
+    Parenthesized(Box<Expression<'a>>),
+    Tuple(Vec<Expression<'a>>),
+    LetExpression {
+        name: &'a str,
+        ty: Type<'a>,
+        value: Box<Expression<'a>>,
+        start: usize,
+        end: usize,
+    },
+    ConstExpression {
+        name: &'a str,
+        ty: Type<'a>,
+        value: Box<Expression<'a>>,
+        start: usize,
+        end: usize,
+    },
+    Assignment {
+        target: Box<Expression<'a>>,
+        value: Box<Expression<'a>>,
+        start: usize,
+        end: usize,
+    },
+    IfExpression(IfExpression<'a>),
+    MatchExpression(MatchExpression<'a>),
+    UnaryOperation {
+        operator: UnaryOperator,
+        operand: Box<Expression<'a>>,
+        start: usize,
+        end: usize,
+    },
+    BinaryOperation {
+        operator: BinaryOperator,
+        left: Box<Expression<'a>>,
+        right: Box<Expression<'a>>,
+        start: usize,
+        end: usize,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum UnaryOperator {
+    Neg,
+    Not,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum BinaryOperator {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    And,
+    Or,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Index,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Literal<'a> {
+    Value(&'a str),
+    Tuple(Vec<Expression<'a>>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Call<'a> {
+    Function {
+        name: PathName<'a>,
+        type_args: Vec<Type<'a>>,
+        args: Vec<CallArg<'a>>,
+        start: usize,
+        end: usize,
+    },
+    Method {
+        object: Box<Expression<'a>>,
+        method: &'a str,
+        type_args: Vec<Type<'a>>,
+        args: Vec<CallArg<'a>>,
+        start: usize,
+        end: usize,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct CallArg<'a> {
+    pub name: Option<&'a str>,
+    pub value: Expression<'a>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Closure<'a> {
+    pub params: Vec<Param<'a>>,
+    pub return_type: Option<Type<'a>>,
+    pub body: Box<Expression<'a>>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct IfExpression<'a> {
+    pub condition: Box<Expression<'a>>,
+    pub then_branch: Box<Expression<'a>>,
+    pub else_branch: Option<Box<Expression<'a>>>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct MatchExpression<'a> {
+    pub value: Box<Expression<'a>>,
+    pub arms: Vec<MatchArm<'a>>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct MatchArm<'a> {
+    pub pattern: Pattern<'a>,
+    pub value: Expression<'a>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Pattern<'a> {
+    Wildcard,
+    Variable(&'a str),
+    Literal(Literal<'a>),
+    Tuple(Vec<Pattern<'a>>),
+    Struct {
+        name: PathName<'a>,
+        fields: Vec<Pattern<'a>>,
+    },
+    Enum {
+        name: PathName<'a>,
+        variant: &'a str,
+        fields: Vec<Pattern<'a>>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Visibility {
+    Public,
+    Private,
+}
+
