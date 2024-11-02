@@ -93,6 +93,7 @@ pub enum Token<'a> {
     Arrow,
     /// This may be a semicolon or a newline
     LineBreak,
+    Indent,
     /// Comment
     Comment,
     /// End of File
@@ -166,6 +167,7 @@ impl std::fmt::Display for Token<'_> {
             Token::Arrow => write!(f, "->"),
             Token::Dot => write!(f, "."),
             Token::LineBreak => write!(f, ";"),
+            Token::Indent => write!(f, "    "),
             Token::Comment => write!(f, "/* ... */"),
             Token::Eof => write!(f, "end of file"),
         }
@@ -559,14 +561,16 @@ impl<'a> TokenLexer<'a> {
                 Ok(SpannedToken::new(Token::LineBreak, start, end))
             }
             c if c.is_whitespace() => {
+                let mut end = start + 1;
                 while let Some((_, c)) = self.chars.peek() {
                     if c.is_whitespace() {
                         self.chars.next();
+                        end += 1;
                     } else {
                         break;
                     }
                 }
-                self.next_token_inner()
+                Ok(SpannedToken::new(Token::Indent, start, end))
             }
             _ => Err(SpannedLexerError::new(LexerError::UnknownError, start, start + 1)),
         }

@@ -72,6 +72,7 @@ extern {
         "->" => Token::Arrow,
         Lb => Token::LineBreak,
         "comment" => Token::Comment,
+        Indent => Token::Indent,
         "eof" => Token::Eof,
     }
 }
@@ -285,13 +286,25 @@ Const: TopLevelStatement<'a> = {
 };
 
 
-Block: Expression<'a> = {
-    "{" Lb? <expr:Expr> <exprs:(Lb <Expr>)*> Lb? "}" => {
+Block: Vec<Statement<'a>> = {
+    "{" Lb? Indent? <expr:Statement> <exprs:(Lb Indent? <Statement>)*> Lb? "}" => {
         let mut v = vec![expr];
         for e in exprs.into_iter() {
             v.push(e);
         }
-        Expression::Sequence(v)
+        v
+    },
+};
+
+Statement: Statement<'a> = {
+    <start: @L> "let" <id:Identifier> ":" <ty:Type> "=" <rhs:Expr> <end: @R> => {
+        Statement::new_let(id, ty, rhs, start, end)
+    },
+    <start: @L> "const" <id:Identifier> ":" <ty:Type> "=" <rhs:Expr> <end: @R> => {
+        Statement::new_const(id, ty, rhs, start, end)
+    },
+    <start: @L> <lhs:Expr> "=" <rhs:Expr> <end: @R> => {
+        Statement::new_assignment(lhs, rhs, start, end)
     },
 };
 
@@ -301,117 +314,232 @@ Block: Expression<'a> = {
     }
 };*/
 
-Expr: Expression<'a> = {
-    #[precedence(level="0")]
-    <id:Identifier> => Expression::Variable(id),
-    "(" <expr:Expr> ")" => Expression::Parenthesized(Box::new(expr)),
-    // TODO: Add literals
-    #[precedence(level="2")]
-    // TODO: Function call
-    <start: @L> <lhs:Expr> "[" <index:Expr> "]" <end: @R> => {
+TermExpr: Expression<'a> = {
+    <id:Path> => Expression::Variable(id),
+    <lit:Literal> => Expression::Literal(lit),
+    <start: @L> "-" <expr:TermExpr> <end: @R> => {
+        let expr = Box::new(expr);
+        Expression::new_unary(UnaryOperator::Neg, expr, start, end)
+    },
+    // TODO: break, continue
+}
+
+IndexExpr: Expression<'a> = {
+    <term:TermExpr> => term,
+    <start: @L> <lhs:IndexExpr> "[" <index:Expr> "]" <end: @R> => {
         let lhs = Box::new(lhs);
         let index = Box::new(index);
         Expression::new_binary(BinaryOperator::Index, lhs, index, start, end)
     },
-    #[precedence(level="3")]
-    <start: @L> <expr:Expr> "?" <end: @R> => {
-    let expr = Box::new(expr);
-        Expression::new_unary(UnaryOperator::Try, expr, start, end)
+    <start: @L> <obj:IndexExpr> "." <name:Identifier> <end: @R> => {
+        let obj = Box::new(obj);
+        Expression::new_member_access(obj, name, start, end)
     },
-    #[precedence(level="4")]
-    <start: @L> "-" <expr:Expr> <end: @R> => {
-        let expr = Box::new(expr);
-        Expression::new_unary(UnaryOperator::Neg, expr, start, end)
-    },
-    <start: @L> "!" <expr:Expr> <end: @R> => {
-        let expr = Box::new(expr);
-        Expression::new_unary(UnaryOperator::Not, expr, start, end)
-    },
-    #[precedence(level="5")] #[assoc(side="left")]
-    <start: @L> <lhs:Expr> "*" <rhs:Expr> <end: @R> => {
+};
+
+FactorExpr: Expression<'a> = {
+    <term:IndexExpr> => term,
+    <start: @L> <lhs:FactorExpr> "*" <rhs:IndexExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Mul, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:Expr> "/" <rhs:Expr> <end: @R> => {
+    <start: @L> <lhs:FactorExpr> "/" <rhs:IndexExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Div, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:Expr> "%" <rhs:Expr> <end: @R> => {
+    <start: @L> <lhs:FactorExpr> "%" <rhs:IndexExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Mod, lhs, rhs, start, end)
     },
-    #[precedence(level="6")] #[assoc(side="left")]
-    <start: @L> <lhs:Expr> "+" <rhs:Expr> <end: @R> => {
+};
+
+SumExpr: Expression<'a> = {
+    <factor:FactorExpr> => factor,
+    <start: @L> <lhs:SumExpr> "+" <rhs:FactorExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Add, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:Expr> "-" <rhs:Expr> <end: @R> => {
+    <start: @L> <lhs:SumExpr> "-" <rhs:FactorExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Sub, lhs, rhs, start, end)
     },
-    #[precedence(level="7")] #[assoc(side="left")]
-    <start: @L> <lhs:Expr> "==" <rhs:Expr> <end: @R> => {
+};
+
+CompareExpr: Expression<'a> = {
+    <sum:SumExpr> => sum,
+    <start: @L> <lhs:CompareExpr> "==" <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Eq, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:Expr> "!=" <rhs:Expr> <end: @R> => {
+    <start: @L> <lhs:CompareExpr> "!=" <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Ne, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:Expr> "<" <rhs:Expr> <end: @R> => {
+    <start: @L> <lhs:CompareExpr> "<" <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Lt, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:Expr> "<=" <rhs:Expr> <end: @R> => {
+    <start: @L> <lhs:CompareExpr> "<=" <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Le, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:Expr> ">" <rhs:Expr> <end: @R> => {
+    <start: @L> <lhs:CompareExpr> ">" <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Gt, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:Expr> ">=" <rhs:Expr> <end: @R> => {
+    <start: @L> <lhs:CompareExpr> ">=" <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Ge, lhs, rhs, start, end)
     },
-    #[precedence(level="8")] #[assoc(side="left")]
-    <start: @L> <lhs:Expr> "&&" <rhs:Expr> <end: @R> => {
+};
+
+NotExpr: Expression<'a> = {
+    <start: @L> "!" <expr:CompareExpr> <end: @R> => {
+        let expr = Box::new(expr);
+        Expression::new_unary(UnaryOperator::Not, expr, start, end)
+    },
+    <expr:CompareExpr> => expr,
+};
+
+ConjExpr: Expression<'a> = {
+    <not:NotExpr> => not,
+    <start: @L> <lhs:ConjExpr> "&&" <rhs:NotExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::And, lhs, rhs, start, end)
     },
-    #[precedence(level="9")] #[assoc(side="left")]
-    <start: @L> <lhs:Expr> "||" <rhs:Expr> <end: @R> => {
+};
+
+DisjExpr: Expression<'a> = {
+    <conj:ConjExpr> => conj,
+    <start: @L> <lhs:DisjExpr> "||" <rhs:ConjExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Or, lhs, rhs, start, end)
     },
-    #[precedence(level="10")] #[assoc(side="right")]
-    <start: @L> <lhs:Expr> "=" <rhs:Expr> <end: @R> => {
-        let lhs = Box::new(lhs);
-        let rhs = Box::new(rhs);
-        Expression::new_assignment(lhs, rhs, start, end)
-    },
-    <start: @L> "let" <id:Identifier> ":" <ty:Type> "=" <rhs:Expr> <end: @R> => {
-        let rhs = Box::new(rhs);
-        Expression::new_let(id, ty, rhs, start, end)
-    },
-    <start: @L> "const" <id:Identifier> ":" <ty:Type> "=" <rhs:Expr> <end: @R> => {
-        let rhs = Box::new(rhs);
-        Expression::new_const(id, ty, rhs, start, end)
-    },
-    #[precedence(level="11")]
-    "return" <expr:Expr> => Expression::Return(Box::new(expr)),
-    // TODO: break, continue, closures
 };
+
+CallExpr: Expression<'a> = {
+    <dis:DisjExpr> => dis,
+    <call:Call> => Expression::Call(call),
+};
+
+TrailingExpr: Expression<'a> = {
+    <call:CallExpr> => call,
+    <trail:Trailing> => trail,
+};
+
+ConditionalExpression: Expression<'a> = {
+    <trail:TrailingExpr> => trail,
+    // TODO add if
+    // TODO add match
+};
+
+TryExpr: Expression<'a> = {
+    <start: @L> <expr:ConditionalExpression> "?" <end: @R> => {
+        let expr = Box::new(expr);
+        Expression::new_unary(UnaryOperator::Try, expr, start, end)
+    },
+    <expr:ConditionalExpression> => expr,
+};
+
+Expr: Expression<'a> = {
+    <trye:TryExpr> => trye,
+    "return" <expr:TryExpr> => Expression::Return(Box::new(expr)),
+    "(" <expr:TryExpr> ")" => Expression::Parenthesized(Box::new(expr)),
+    <lambda:Closure> => lambda,
+};
+
+
+Literal: Literal<'a> = {
+    <int:Int_lit> => Literal::Int(int),
+    <float:Float_lit> => Literal::Float(float),
+    <char:Char_lit> => Literal::Char(char),
+    <string:String_lit> => Literal::String(string),
+    "True" => Literal::Bool(true),
+    "False" => Literal::Bool(false),
+    "(" ")" => Literal::Unit,
+    "(" <expr:Expr> <exprs:("," <Expr>)+> ")" => {
+        let mut v = vec![expr];
+        for e in exprs.into_iter() {
+            v.push(e);
+        }
+        Literal::Tuple(v)
+    },
+};
+
+Closure: Expression<'a> = {
+    <start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Block> <end: @R> => Closure::new(params, ret, body, start, end),
+    //<start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Expr> <end: @R> => Closure::new(params, ret, vec![Statement::Expression(body)], start, end),
+    // TODO: add closure without paramlist and without return types
+
+};
+
+
+pub ClosureParamList: Vec<Param<'a>> = {
+    "|" <param:Param> <params:("," <Param>)*> "|" => {
+        let mut v = vec![param];
+        for p in params.into_iter() {
+            v.push(p);
+        }
+        v
+    },
+    "|" "|" => {
+        Vec::new()
+    }
+};
+
+Call: Call<'a> = {
+    <start: @L> <callee:CallExpr> <args:ArgList> <end: @R> => {
+        Call::new(Box::new(callee), Vec::new(), args, start, end)
+    },
+    //<start: @L> <callee:CallExpr> <typeargs:TypeArgList> <args:ArgList> <end: @R> => Call::new(Box::new(callee), typeargs, args, start, end),
+};
+
+Trailing: Expression<'a> = {
+    <start: @L> <call:CallExpr> <lambdas:(Indent <Closure>)+> <end: @R> => {
+        Expression::TrailingLambdas(Box::new(call), lambdas, start, end)
+    },
+};
+
+
+ArgList: Vec<CallArg<'a>> = {
+    "(" <arg:CallArg> <args:("," <CallArg>)*> ")" => {
+        let mut v = vec![arg];
+        for a in args.into_iter() {
+            v.push(a);
+        }
+        v
+    },
+    "(" ")" => Vec::new(),
+};
+
+CallArg: CallArg<'a> = {
+    <start: @L> <name:(<Identifier> "=")?> <expr:Expr> <end: @R> => CallArg::new(name, expr, start, end),
+};
+
+TypeArgList: Vec<Type<'a>> = {
+    "::" "<" <arg:Type> <args:("," <Type>)*> ">" => {
+        let mut v = vec![arg];
+        for a in args.into_iter() {
+            v.push(a);
+        }
+        v
+    },
+    "::" "<" ">" => Vec::new(),
+};
+
+
+
+

@@ -41,7 +41,7 @@ pub enum Function<'a> {
         generic_params: Vec<GenericParam<'a>>,
         params: Vec<Param<'a>>,
         return_type: Type<'a>,
-        body: Expression<'a>,
+        body: Vec<Statement<'a>>,
         start: usize,
         end: usize,
     },
@@ -65,7 +65,7 @@ impl Function<'_> {
         generic_params: Vec<GenericParam<'a>>,
         params: Vec<Param<'a>>,
         return_type: Type<'a>,
-        body: Expression<'a>,
+        body: Vec<Statement<'a>>,
         start: usize,
         end: usize,
     ) -> TopLevelStatement<'a> {
@@ -322,38 +322,63 @@ pub enum BuiltinType {
     Never,
 }
 
+
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum Expression<'a> {
-    Blank,
-    Sequence(Vec<Expression<'a>>),
-    Variable(&'a str),
-    Type(Type<'a>),
-    Literal(Literal<'a>),
-    Call(Call<'a>),
-    Return(Box<Expression<'a>>),
-    Closure(Closure<'a>),
-    Parenthesized(Box<Expression<'a>>),
-    Tuple(Vec<Expression<'a>>),
-    LetExpression {
+pub enum Statement<'a> {
+    Expression(Expression<'a>),
+    Let {
         name: &'a str,
         ty: Type<'a>,
-        value: Box<Expression<'a>>,
+        value: Expression<'a>,
         start: usize,
         end: usize,
     },
-    ConstExpression {
+    Const {
         name: &'a str,
         ty: Type<'a>,
-        value: Box<Expression<'a>>,
+        value: Expression<'a>,
         start: usize,
         end: usize,
     },
     Assignment {
-        target: Box<Expression<'a>>,
-        value: Box<Expression<'a>>,
+        target: Expression<'a>,
+        value: Expression<'a>,
         start: usize,
         end: usize,
     },
+}
+
+impl Statement<'_> {
+    pub fn new_let<'a>(name: &'a str, ty: Type<'a>, value: Expression<'a>, start: usize, end: usize) -> Statement<'a> {
+        Statement::Let { name, ty, value, start, end }
+    }
+
+    pub fn new_const<'a>(name: &'a str, ty: Type<'a>, value: Expression<'a>, start: usize, end: usize) -> Statement<'a> {
+        Statement::Const { name, ty, value, start, end }
+    }
+
+    pub fn new_assignment<'a>(target: Expression<'a>, value: Expression<'a>, start: usize, end: usize) -> Statement<'a> {
+        Statement::Assignment { target, value, start, end }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub enum Expression<'a> {
+    Variable(PathName<'a>),
+    Type(Type<'a>),
+    Literal(Literal<'a>),
+    Call(Call<'a>),
+    TrailingLambdas(Box<Expression<'a>>, Vec<Expression<'a>>, usize, usize),
+    MemberAccess {
+        object: Box<Expression<'a>>,
+        field: &'a str,
+        start: usize,
+        end: usize,
+    },
+    Return(Box<Expression<'a>>),
+    Closure(Closure<'a>),
+    Parenthesized(Box<Expression<'a>>),
+    Tuple(Vec<Expression<'a>>),
     IfExpression(IfExpression<'a>),
     MatchExpression(MatchExpression<'a>),
     UnaryOperation {
@@ -391,33 +416,13 @@ impl Expression<'_> {
         Expression::UnaryOperation { operator, operand, start, end }
     }
 
-    pub fn new_let<'a>(
-        name: &'a str,
-        ty: Type<'a>,
-        value: Box<Expression<'a>>,
+    pub fn new_member_access<'a>(
+        object: Box<Expression<'a>>,
+        field: &'a str,
         start: usize,
         end: usize,
     ) -> Expression<'a> {
-        Expression::LetExpression { name, ty, value, start, end }
-    }
-
-    pub fn new_const<'a>(
-        name: &'a str,
-        ty: Type<'a>,
-        value: Box<Expression<'a>>,
-        start: usize,
-        end: usize,
-    ) -> Expression<'a> {
-        Expression::ConstExpression { name, ty, value, start, end }
-    }
-
-    pub fn new_assignment<'a>(
-        target: Box<Expression<'a>>,
-        value: Box<Expression<'a>>,
-        start: usize,
-        end: usize,
-    ) -> Expression<'a> {
-        Expression::Assignment { target, value, start, end }
+        Expression::MemberAccess { object, field, start, end }
     }
 }
 
@@ -444,30 +449,38 @@ pub enum BinaryOperator {
     Gt,
     Ge,
     Index,
+    Concat,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Literal<'a> {
-    Value(&'a str),
+    Int(&'a str),
+    Float(&'a str),
+    Char(&'a str),
+    String(&'a str),
+    Bool(bool),
+    Unit,
     Tuple(Vec<Expression<'a>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum Call<'a> {
-    Function {
-        name: PathName<'a>,
+pub struct Call<'a> {
+    name: Box<Expression<'a>>,
+    type_args: Vec<Type<'a>>,
+    args: Vec<CallArg<'a>>,
+    start: usize,
+    end: usize,
+}
+
+impl Call<'_> {
+    pub fn new<'a>(
+        name: Box<Expression<'a>>,
         type_args: Vec<Type<'a>>,
         args: Vec<CallArg<'a>>,
         start: usize,
         end: usize,
-    },
-    Method {
-        object: Box<Expression<'a>>,
-        method: &'a str,
-        type_args: Vec<Type<'a>>,
-        args: Vec<CallArg<'a>>,
-        start: usize,
-        end: usize,
+    ) -> Call<'a> {
+        Call { name, type_args, args, start, end }
     }
 }
 
@@ -479,13 +492,31 @@ pub struct CallArg<'a> {
     pub end: usize,
 }
 
+impl CallArg<'_> {
+    pub fn new<'a>(name: Option<&'a str>, value: Expression<'a>, start: usize, end: usize) -> CallArg<'a> {
+        CallArg { name, value, start, end }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Closure<'a> {
     pub params: Vec<Param<'a>>,
     pub return_type: Option<Type<'a>>,
-    pub body: Box<Expression<'a>>,
+    pub body: Vec<Statement<'a>>,
     pub start: usize,
     pub end: usize,
+}
+
+impl Closure<'_> {
+    pub fn new<'a>(
+        params: Vec<Param<'a>>,
+        return_type: Type<'a>,
+        body: Vec<Statement<'a>>,
+        start: usize,
+        end: usize,
+    ) -> Expression<'a> {
+        Expression::Closure(Closure { params, return_type: Some(return_type), body, start, end })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
