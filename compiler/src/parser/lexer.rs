@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-
+#[derive(Debug)]
 pub struct SpannedToken<'a> {
     pub token: Token<'a>,
     pub start: usize,
@@ -172,7 +172,7 @@ impl std::fmt::Display for Token<'_> {
     }
 }
 
-
+#[derive(Debug)]
 pub struct SpannedLexerError {
     pub error: LexerError,
     pub start: usize,
@@ -191,6 +191,7 @@ impl std::fmt::Display for SpannedLexerError {
     }
 }
 
+#[derive(Debug)]
 pub enum LexerError {
     UnexpectedCharacter(char),
     InvalidIdentifier(usize, usize),
@@ -387,7 +388,18 @@ impl<'a> TokenLexer<'a> {
                 }
             }
             '?' => Ok(SpannedToken::new(Token::QMark, start, start + 1)),
-            ';' => Ok(SpannedToken::new(Token::LineBreak, start, start + 1)),
+            ';' => {
+                let mut end = start + 1;
+                while let Some((_, c)) = self.chars.peek() {
+                    if (c.is_whitespace() && (*c == '\n' || *c == '\r')) || *c == ';' {
+                        end += 1;
+                        self.chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                Ok(SpannedToken::new(Token::LineBreak, start, end))
+            }
             '.' => Ok(SpannedToken::new(Token::Dot, start, start + 1)),
             'a'..='z' | 'A'..='Z' | '_' => {
                 let mut end = start + 1;
@@ -445,12 +457,16 @@ impl<'a> TokenLexer<'a> {
                                     return Err(SpannedLexerError::new(LexerError::InvalidIdentifier(end - 1, end), start, end));
                                 }
                                 let string = queue.iter().collect::<String>();
-                                if string.parse::<u64>().is_err() {
+                                if string.parse::<u64>().is_ok() && string.parse::<f64>().is_ok() && string.chars().all(|c| c.is_numeric()) {
                                     return Err(SpannedLexerError::new(LexerError::InvalidIdentifier(end - queue.len(), end), start, end));
                                 }
                                 break;
                             }
-                            queue.push_front(c);
+                            if c.is_numeric() {
+                                queue.push_front(c);
+                            } else {
+                                break;
+                            }
                         }
                         Ok(SpannedToken::new(Token::Identifier(ident), start, end))
                     }
@@ -492,7 +508,7 @@ impl<'a> TokenLexer<'a> {
                     let c = *c;
                     end += 1;
                     self.chars.next();
-                    if c == '"' && !found_backslash {
+                    if c == '\'' && !found_backslash {
                         found_end = true;
                         break;
                     } else if c == '\\' {
@@ -530,7 +546,18 @@ impl<'a> TokenLexer<'a> {
                 let lit = &self.input[start..end];
                 Ok(SpannedToken::new(Token::StringLiteral(lit), start, end))
             }
-            '\n' => Ok(SpannedToken::new(Token::LineBreak, start, start + 1)),
+            '\n' => {
+                let mut end = start + 1;
+                while let Some((_, c)) = self.chars.peek() {
+                    if (c.is_whitespace() && (*c == '\n' || *c == '\r')) || *c == ';' {
+                        end += 1;
+                        self.chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                Ok(SpannedToken::new(Token::LineBreak, start, end))
+            }
             c if c.is_whitespace() => {
                 while let Some((_, c)) = self.chars.peek() {
                     if c.is_whitespace() {
@@ -600,6 +627,180 @@ impl<'a> Iterator for TokenLexer<'a> {
                 }
 
             }
+        }
+    }
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_keywords() {
+        let input = "if else fn return break continue struct enum let mut const import module pub extern i8 i16 i32 i64 int nat f32 f64 char bool True False where";
+        let mut lexer = TokenLexer::new(input);
+        let expected = vec![
+            Token::If,
+            Token::Else,
+            Token::Fun,
+            Token::Return,
+            Token::Break,
+            Token::Continue,
+            Token::Struct,
+            Token::Enum,
+            Token::Let,
+            Token::Mut,
+            Token::Const,
+            Token::Import,
+            Token::Module,
+            Token::Pub,
+            Token::Extern,
+            Token::I8,
+            Token::I16,
+            Token::I32,
+            Token::I64,
+            Token::Int,
+            Token::Nat,
+            Token::F32,
+            Token::F64,
+            Token::Char,
+            Token::Bool,
+            Token::True,
+            Token::False,
+            Token::Where,
+        ];
+        for token in expected {
+            let result = lexer.next_token().unwrap();
+            assert_eq!(result.token, token);
+        }
+    }
+
+    #[test]
+    fn test_operators() {
+        let input = "+ - * / % ! || && == != <= >= = ++ ::";
+        let mut lexer = TokenLexer::new(input);
+        let expected = vec![
+            Token::Plus,
+            Token::Minus,
+            Token::Multiply,
+            Token::Divide,
+            Token::Modulo,
+            Token::Not,
+            Token::Or,
+            Token::And,
+            Token::Equals,
+            Token::NotEquals,
+            Token::LessThanOrEqual,
+            Token::GreaterThanOrEqual,
+            Token::Assign,
+            Token::Concat,
+            Token::Scope,
+        ];
+        for token in expected {
+            let result = lexer.next_token().unwrap();
+            assert_eq!(result.token, token);
+        }
+    }
+
+    #[test]
+    fn test_symbols() {
+        let input = "{ } ( ) [ ] < > , : ? | . ;";
+        let mut lexer = TokenLexer::new(input);
+        let expected = vec![
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::ParenOpen,
+            Token::ParenClose,
+            Token::BracketOpen,
+            Token::BracketClose,
+            Token::AngleOpen,
+            Token::AngleClose,
+            Token::Comma,
+            Token::Colon,
+            Token::QMark,
+            Token::Bar,
+            Token::Dot,
+            Token::LineBreak,
+        ];
+        for token in expected {
+            let result = lexer.next_token().unwrap();
+            assert_eq!(result.token, token);
+        }
+    }
+
+    #[test]
+    fn test_literals() {
+        let input = "123 123.456 'a' \"hello\"";
+        let mut lexer = TokenLexer::new(input);
+        let expected = vec![
+            Token::IntLiteral("123"),
+            Token::FloatLiteral("123.456"),
+            Token::CharLiteral("'a'"),
+            Token::StringLiteral("\"hello\""),
+        ];
+        for token in expected {
+            let result = lexer.next_token().unwrap();
+            assert_eq!(result.token, token);
+        }
+    }
+
+    #[test]
+    fn test_identifiers() {
+        let input = "abc _abc abc123 _abc123 abc' abc-abc abc-a2' abc''";
+        let mut lexer = TokenLexer::new(input);
+        let expected = vec![
+            Token::Identifier("abc"),
+            Token::Identifier("_abc"),
+            Token::Identifier("abc123"),
+            Token::Identifier("_abc123"),
+            Token::Identifier("abc'"),
+            Token::Identifier("abc-abc"),
+            Token::Identifier("abc-a2'"),
+            Token::Identifier("abc''"),
+        ];
+        for token in expected {
+            let result = lexer.next_token().unwrap();
+            assert_eq!(result.token, token);
+        }
+    }
+
+    #[test]
+    fn test_line_breaks() {
+        let input = ";\n; \n; \r; \r\n; \n\r; \n\n; \r\r; \r\n\r\n; \n\n\n; \r\r\r; \r\n\r\n\r\n; \n\n\n\n; \r\r\r\r; \r\n\r\n\r\n\r\n;";
+        let mut lexer = TokenLexer::new(input);
+        let expected = vec![
+            Token::LineBreak,
+            Token::LineBreak,
+            Token::LineBreak,
+            Token::LineBreak,
+            Token::LineBreak,
+            Token::LineBreak,
+            Token::LineBreak,
+            Token::LineBreak,
+            Token::LineBreak,
+            Token::LineBreak,
+            Token::LineBreak,
+            Token::LineBreak,
+            Token::LineBreak,
+            Token::LineBreak,
+            ];
+
+        for token in expected {
+            let result = lexer.next_token().unwrap();
+            assert_eq!(result.token, token);
+        }
+    }
+
+    #[test]
+    fn test_errors() {
+        let input = "abc-123 abc-123-";
+        let mut lexer = TokenLexer::new(input);
+        for _ in 0..2 {
+            let result = lexer.next_token();
+            println!("{:?}", result);
+            assert!(result.is_err());
         }
     }
 }

@@ -1,5 +1,5 @@
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct File<'a> {
     pub path: PathName<'a>,
     pub content: Vec<TopLevelStatement<'a>>,
@@ -11,7 +11,7 @@ impl File<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct PathName<'a> {
     pub segments: Vec<&'a str>,
     pub start: usize,
@@ -24,7 +24,7 @@ impl PathName<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum TopLevelStatement<'a> {
     Function(Function<'a>),
     Struct(Struct<'a>),
@@ -33,7 +33,7 @@ pub enum TopLevelStatement<'a> {
     Import(Import<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Function<'a> {
     Regular {
         visibility: Visibility,
@@ -106,7 +106,7 @@ impl Function<'_> {
     }
 } 
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Struct<'a> {
     pub visibility: Visibility,
     pub name: &'a str,
@@ -136,7 +136,7 @@ impl Struct<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Field<'a> {
     pub visibility: Visibility,
     pub name: &'a str,
@@ -151,7 +151,7 @@ impl Field<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Enum<'a> {
     pub visibility: Visibility,
     pub name: &'a str,
@@ -181,7 +181,7 @@ impl Enum<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Variant<'a> {
     pub name: &'a str,
     pub fields: Vec<Field<'a>>,
@@ -195,22 +195,23 @@ impl Variant<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Const<'a> {
     pub visibility: Visibility,
     pub name: PathName<'a>,
+    pub ty: Type<'a>,
     pub value: Expression<'a>,
     pub start: usize,
     pub end: usize,
 }
 
 impl Const<'_> {
-    pub fn new<'a>(visibility: Visibility, name: PathName<'a>, value: Expression<'a>, start: usize, end: usize) -> TopLevelStatement<'a> {
-        TopLevelStatement::Const(Const { visibility, name, value, start, end })
+    pub fn new<'a>(visibility: Visibility, name: PathName<'a>, ty: Type<'a>, value: Expression<'a>, start: usize, end: usize) -> TopLevelStatement<'a> {
+        TopLevelStatement::Const(Const { visibility, name, ty, value, start, end })
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Import<'a> {
     pub path: PathName<'a>,
     pub start: usize,
@@ -223,7 +224,7 @@ impl Import<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct GenericParam<'a> {
     pub name: &'a str,
     pub constraints: Vec<Type<'a>>,
@@ -238,7 +239,7 @@ impl GenericParam<'_> {
 }
 
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Param<'a> {
     pub implicit: bool,
     pub name: &'a str,
@@ -253,20 +254,21 @@ impl Param<'_> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Type<'a> {
     pub mutable: bool,
-    pub raw: TypeRaw<'a>,
+    pub raw: RawType<'a>,
 }
 
 impl Type<'_> {
-    pub fn new<'a>(mutable: bool, raw: TypeRaw<'a>) -> Type<'a> {
+    pub fn new<'a>(mutable: bool, raw: RawType<'a>) -> Type<'a> {
         Type { mutable, raw }
     }
 }
 
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum TypeRaw<'a> {
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub enum RawType<'a> {
     Builtin(BuiltinType),
     Simple {
         name: PathName<'a>,
@@ -286,25 +288,25 @@ pub enum TypeRaw<'a> {
     },
 }
 
-impl TypeRaw<'_> {
-    pub fn new_builtin<'a>(builtin: BuiltinType) -> TypeRaw<'a> {
-        TypeRaw::Builtin(builtin)
+impl RawType<'_> {
+    pub fn new_builtin<'a>(builtin: BuiltinType) -> RawType<'a> {
+        RawType::Builtin(builtin)
     }
 
-    pub fn new_simple<'a>(name: PathName<'a>, start: usize, end: usize) -> TypeRaw<'a> {
-        TypeRaw::Simple { name, start, end }
+    pub fn new_simple<'a>(name: PathName<'a>, start: usize, end: usize) -> RawType<'a> {
+        RawType::Simple { name, start, end }
     }
 
-    pub fn new_generic<'a>(name: PathName<'a>, params: Vec<Type<'a>>, start: usize, end: usize) -> TypeRaw<'a> {
-        TypeRaw::Generic { name, params, start, end }
+    pub fn new_generic<'a>(name: PathName<'a>, params: Vec<Type<'a>>, start: usize, end: usize) -> RawType<'a> {
+        RawType::Generic { name, params, start, end }
     }
 
-    pub fn new_expression<'a>(expr: Box<Expression<'a>>, start: usize, end: usize) -> TypeRaw<'a> {
-        TypeRaw::Expression { expr, start, end }
+    pub fn new_expression<'a>(expr: Box<Expression<'a>>, start: usize, end: usize) -> RawType<'a> {
+        RawType::Expression { expr, start, end }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum BuiltinType {
     I8,
     I16,
@@ -320,7 +322,7 @@ pub enum BuiltinType {
     Never,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Expression<'a> {
     Blank,
     Sequence(Vec<Expression<'a>>),
@@ -444,13 +446,13 @@ pub enum BinaryOperator {
     Index,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Literal<'a> {
     Value(&'a str),
     Tuple(Vec<Expression<'a>>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Call<'a> {
     Function {
         name: PathName<'a>,
@@ -469,7 +471,7 @@ pub enum Call<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct CallArg<'a> {
     pub name: Option<&'a str>,
     pub value: Expression<'a>,
@@ -477,7 +479,7 @@ pub struct CallArg<'a> {
     pub end: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Closure<'a> {
     pub params: Vec<Param<'a>>,
     pub return_type: Option<Type<'a>>,
@@ -486,7 +488,7 @@ pub struct Closure<'a> {
     pub end: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct IfExpression<'a> {
     pub condition: Box<Expression<'a>>,
     pub then_branch: Box<Expression<'a>>,
@@ -495,7 +497,7 @@ pub struct IfExpression<'a> {
     pub end: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct MatchExpression<'a> {
     pub value: Box<Expression<'a>>,
     pub arms: Vec<MatchArm<'a>>,
@@ -503,7 +505,7 @@ pub struct MatchExpression<'a> {
     pub end: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct MatchArm<'a> {
     pub pattern: Pattern<'a>,
     pub value: Expression<'a>,
@@ -511,7 +513,7 @@ pub struct MatchArm<'a> {
     pub end: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Pattern<'a> {
     Wildcard,
     Variable(&'a str),

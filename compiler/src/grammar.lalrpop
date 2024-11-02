@@ -112,9 +112,9 @@ pub Visibility: Visibility = {
 pub Decl: TopLevelStatement<'a> = {
     <start: @L> "import" <p:Path> <end: @R> => Import::new(p, start, end),
     <f:Function> => f,
-    /*<s:Struct> => s,
+    <s:Struct> => s,
     <e:Enum> => e,
-    <c:Const> => c,*/
+    <c:Const> => c,
 };
 
 pub Function: TopLevelStatement<'a> = {
@@ -123,26 +123,36 @@ pub Function: TopLevelStatement<'a> = {
 };
 
 pub RegularFunction: TopLevelStatement<'a> = {
-    <start: @L> <vis:Visibility> "fn" <name:Identifier> <typaram:TypeParamList> <params:ParamList> <ret:ReturnType> <body:Block> <end: @R> => Function::new(vis, name, typaram, params, ret, body, start, end),
+    <start: @L> <vis:Visibility> "fn" <name:Path> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    }
 };
 
 pub ExternFunction: TopLevelStatement<'a> = {
-    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Identifier> <typaram:TypeParamList> <params:ParamList> <ret:ReturnType> <body:String_lit> <end: @R> => Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end),
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    }
 };
 
 pub ParamList: Vec<Param<'a>> = {
-    "(" <params:(<Param> ("," <Param>)*)?> ")" => {
-        match params {
-            Some((p, ps)) => {
-                let mut v = vec![p];
-                for p in ps.into_iter() {
-                    v.push(p.1);
-                }
-                v
-            },
-            None => Vec::new(),
+    "(" <param:Param> <params:("," <Param>)*> ")" => {
+        let mut v = vec![param];
+        for p in params.into_iter() {
+            v.push(p);
         }
+        v
     },
+    "(" ")" => {
+        Vec::new()
+    }
 };
 
 pub Param: Param<'a> = {
@@ -154,7 +164,7 @@ pub ReturnType: Type<'a> = {
     <ty:("->" <Type>)?> => {
         match ty {
             Some(t) => t,
-            None => Type::Unit,
+            None => Type::new(false, RawType::new_builtin(BuiltinType::Unit)),
         }
     },
 };
@@ -170,32 +180,39 @@ pub Type: Type<'a> = {
 };
 
 pub RawType: RawType<'a> = {
-    "i8" => TypeRaw::new_builtin(BuiltinType::I8),
-    "i16" => TypeRaw::new_builtin(BuiltinType::I16),
-    "i32" => TypeRaw::new_builtin(BuiltinType::I32),
-    "i64" => TypeRaw::new_builtin(BuiltinType::I64),
-    "int" => TypeRaw::new_builtin(BuiltinType::Int),
-    "nat" => TypeRaw::new_builtin(BuiltinType::Nat),
-    "f32" => TypeRaw::new_builtin(BuiltinType::F32),
-    "f64" => TypeRaw::new_builtin(BuiltinType::F64),
-    "char" => TypeRaw::new_builtin(BuiltinType::Char),
-    "bool" => TypeRaw::new_builtin(BuiltinType::Bool),
-    "(" ")" => TypeRaw::new_builtin(BuiltinType::Unit),
-    "!" => TypeRaw::new_builtin(BuiltinType::Never),
-    <start: @L> <p:Path> <end: @R> => TypeRaw::new_simple(p, start, end),
+    "i8" => RawType::new_builtin(BuiltinType::I8),
+    "i16" => RawType::new_builtin(BuiltinType::I16),
+    "i32" => RawType::new_builtin(BuiltinType::I32),
+    "i64" => RawType::new_builtin(BuiltinType::I64),
+    "int" => RawType::new_builtin(BuiltinType::Int),
+    "nat" => RawType::new_builtin(BuiltinType::Nat),
+    "f32" => RawType::new_builtin(BuiltinType::F32),
+    "f64" => RawType::new_builtin(BuiltinType::F64),
+    "char" => RawType::new_builtin(BuiltinType::Char),
+    "bool" => RawType::new_builtin(BuiltinType::Bool),
+    "(" ")" => RawType::new_builtin(BuiltinType::Unit),
+    "!" => RawType::new_builtin(BuiltinType::Never),
+    <start: @L> <p:Path> <end: @R> => RawType::new_simple(p, start, end),
     <start: @L> <p:Path> "<" <arg:Type> <args:("," Type)*> ">" <end: @R> => {
         let mut v = vec![arg];
         for a in args.into_iter() {
             v.push(a.1);
         }
-        TypeRaw::new_generic(p, v, start, end)
+        RawType::new_generic(p, v, start, end)
     },
     // TODO: Do expression type
 };
 
 pub TypeParamList: Vec<GenericParam<'a>> = {
-    <params:("<" <TypeParam> ("," <TypeParam>)* ">")?> => {
-        params.unwrap_or(Vec::new())
+    "<" <param:TypeParam> <params:("," <TypeParam>)*> ">" => {
+        let mut v = vec![param];
+        for p in params.into_iter() {
+            v.push(p);
+        }
+        v
+    },
+    "<" ">" => {
+        Vec::new()
     },
 
 };
@@ -203,7 +220,13 @@ pub TypeParamList: Vec<GenericParam<'a>> = {
 
 pub TypeParam: GenericParam<'a> = {
     <start: @L> <name:Identifier> <end: @R> => GenericParam::new(name, Vec::new(), start, end),
-    <start: @L> <name:Identifier> ":" <params:(<Type> ("+" <Type>)* )> <end: @R> => GenericParam::new_with_type(name, params, start, end),
+    <start: @L> <name:Identifier> ":" <param:Type> <params:("+" <Type>)*>  <end: @R> => {
+        let mut v = vec![param];
+        for p in params.into_iter() {
+            v.push(p);
+        }
+        GenericParam::new(name, v, start, end)
+    },
 };
 
 pub Struct: TopLevelStatement<'a> = {
@@ -211,22 +234,18 @@ pub Struct: TopLevelStatement<'a> = {
 };
 
 pub StructFields: Vec<Field<'a>> = {
-    "{" <fields:(<Field> (Lb? "," <Field>)*)?> "}" => {
-        match fields {
-            Some((f, fs)) => {
-                let mut v = vec![f];
-                for f in fs.into_iter() {
-                    v.push(f.1);
-                }
-                v
-            },
-            None => Vec::new(),
+    "{" <field:Field> <fields:(Lb? "," <Field>)*> "}" => {
+        let mut v = vec![field];
+        for f in fields.into_iter() {
+            v.push(f);
         }
+        v
     },
+    "{" "}" => Vec::new(),
 };
 
 pub Field: Field<'a> = {
-    <start: @L> <vis:Visibility> <name:Identifier> ":" <ty:Type> <end: @R> => StructField::new(vis, name, ty, start, end),
+    <start: @L> <vis:Visibility> <name:Identifier> ":" <ty:Type> <end: @R> => Field::new(vis, name, ty, start, end),
 };
 
 pub Enum: TopLevelStatement<'a> = {
@@ -234,49 +253,45 @@ pub Enum: TopLevelStatement<'a> = {
 };
 
 pub EnumVariants: Vec<Variant<'a>> = {
-    "{" <variants:(<EnumVariant> (Lb? "," <EnumVariant>)*)?> "}" => {
-        match variants {
-            Some((v, vs)) => {
-                let mut v = vec![v];
-                for v in vs.into_iter() {
-                    v.push(v.1);
-                }
-                v
-            },
-            None => Vec::new(),
+    "{" <variant:EnumVariant> <variants:(Lb? "," <EnumVariant>)*> "}" => {
+        let mut v = vec![variant];
+        for f in variants.into_iter() {
+            v.push(f);
         }
+        v
     },
+    "{" "}" => Vec::new(),
 };
 
 pub EnumVariant: Variant<'a> = {
-    <start: @L> <name:Identifier> <fields:EnumFields> <end: @R> => EnumVariant::new(name, fields, start, end),
+    <start: @L> <name:Identifier> <fields:EnumFields> <end: @R> => Variant::new(name, fields, start, end),
+    <start: @L> <name:Identifier> <end: @R> => Variant::new(name, Vec::new(), start, end),
 };
 
 
 pub EnumFields: Vec<Field<'a>> = {
-    "(" <fields:(<Field> ("," <Field>)*)?> ")" => {
-        match fields {
-            Some((f, fs)) => {
-                let mut v = vec![f];
-                for f in fs.into_iter() {
-                    v.push(f.1);
-                }
-                v
-            },
-            None => Vec::new(),
+    "(" <field:Field> <fields:("," <Field>)*> ")" => {
+        let mut v = vec![field];
+        for f in fields.into_iter() {
+            v.push(f);
         }
+        v
     },
 };
 
 
 Const: TopLevelStatement<'a> = {
-    <start: @L> <vis:Visibility> "const" <name:Identifier> ":" <ty:Type> "=" <val:Expr> <end: @R> => Const::new(vis, name, ty, val, start, end),
+    <start: @L> <vis:Visibility> "const" <name:Path> ":" <ty:Type> "=" <val:Expr> <end: @R> => Const::new(vis, name, ty, val, start, end),
 };
 
 
 Block: Expression<'a> = {
-    "{" Lb? <expr:(<Expr> (Lb <Expr>)*)> Lb? "}" => {
-        expr
+    "{" Lb? <expr:Expr> <exprs:(Lb <Expr>)*> Lb? "}" => {
+        let mut v = vec![expr];
+        for e in exprs.into_iter() {
+            v.push(e);
+        }
+        Expression::Sequence(v)
     },
 };
 
@@ -288,8 +303,8 @@ Block: Expression<'a> = {
 
 Expr: Expression<'a> = {
     #[precedence(level="0")]
-    Identifier => Expression::Identifier(id),
-    /*"(" <expr:Expr> ")" => Expression::Parenthesized(Box::new(expr)),
+    <id:Identifier> => Expression::Variable(id),
+    "(" <expr:Expr> ")" => Expression::Parenthesized(Box::new(expr)),
     // TODO: Add literals
     #[precedence(level="2")]
     // TODO: Function call
@@ -297,7 +312,7 @@ Expr: Expression<'a> = {
         let lhs = Box::new(lhs);
         let index = Box::new(index);
         Expression::new_binary(BinaryOperator::Index, lhs, index, start, end)
-    }
+    },
     #[precedence(level="3")]
     <start: @L> <expr:Expr> "?" <end: @R> => {
     let expr = Box::new(expr);
@@ -348,7 +363,7 @@ Expr: Expression<'a> = {
     <start: @L> <lhs:Expr> "!=" <rhs:Expr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Neq, lhs, rhs, start, end)
+        Expression::new_binary(BinaryOperator::Ne, lhs, rhs, start, end)
     },
     <start: @L> <lhs:Expr> "<" <rhs:Expr> <end: @R> => {
         let lhs = Box::new(lhs);
@@ -391,12 +406,12 @@ Expr: Expression<'a> = {
     <start: @L> "let" <id:Identifier> ":" <ty:Type> "=" <rhs:Expr> <end: @R> => {
         let rhs = Box::new(rhs);
         Expression::new_let(id, ty, rhs, start, end)
-    }
+    },
     <start: @L> "const" <id:Identifier> ":" <ty:Type> "=" <rhs:Expr> <end: @R> => {
         let rhs = Box::new(rhs);
         Expression::new_const(id, ty, rhs, start, end)
-    }
+    },
     #[precedence(level="11")]
-    "return" <expr:Expr> => Expression::new_return(expr),*/
+    "return" <expr:Expr> => Expression::Return(Box::new(expr)),
     // TODO: break, continue, closures
 };
