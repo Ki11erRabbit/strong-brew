@@ -510,12 +510,12 @@ pub struct Closure<'a> {
 impl Closure<'_> {
     pub fn new<'a>(
         params: Vec<Param<'a>>,
-        return_type: Type<'a>,
+        return_type: Option<Type<'a>>,
         body: Vec<Statement<'a>>,
         start: usize,
         end: usize,
     ) -> Expression<'a> {
-        Expression::Closure(Closure { params, return_type: Some(return_type), body, start, end })
+        Expression::Closure(Closure { params, return_type, body, start, end })
     }
 }
 

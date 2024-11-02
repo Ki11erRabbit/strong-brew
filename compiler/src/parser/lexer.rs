@@ -570,7 +570,8 @@ impl<'a> TokenLexer<'a> {
                         break;
                     }
                 }
-                Ok(SpannedToken::new(Token::Indent, start, end))
+                //Ok(SpannedToken::new(Token::Indent, start, end))
+                self.next_token_inner()
             }
             _ => Err(SpannedLexerError::new(LexerError::UnknownError, start, start + 1)),
         }

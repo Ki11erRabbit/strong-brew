@@ -480,7 +480,8 @@ Literal: Literal<'a> = {
 };
 
 Closure: Expression<'a> = {
-    <start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Block> <end: @R> => Closure::new(params, ret, body, start, end),
+    <start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Block> <end: @R> => Closure::new(params, Some(ret), body, start, end),
+    <start: @L> <body:Block> <end: @R> => Closure::new(Vec::new(), None, body, start, end),
     //<start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Expr> <end: @R> => Closure::new(params, ret, vec![Statement::Expression(body)], start, end),
     // TODO: add closure without paramlist and without return types
 
@@ -508,7 +509,7 @@ Call: Call<'a> = {
 };
 
 Trailing: Expression<'a> = {
-    <start: @L> <call:CallExpr> <lambdas:(Indent <Closure>)+> <end: @R> => {
+    <start: @L> <call:CallExpr> <lambdas:Closure+> <end: @R> => {
         Expression::TrailingLambdas(Box::new(call), lambdas, start, end)
     },
 };
