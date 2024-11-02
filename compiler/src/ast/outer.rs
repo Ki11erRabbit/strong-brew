@@ -40,7 +40,7 @@ pub enum Function<'a> {
         name: PathName<'a>,
         generic_params: Vec<GenericParam<'a>>,
         params: Vec<Param<'a>>,
-        return_type: Option<Expression<'a>>,
+        return_type: Type<'a>,
         body: Expression<'a>,
         start: usize,
         end: usize,
@@ -51,12 +51,60 @@ pub enum Function<'a> {
         name: PathName<'a>,
         generic_params: Vec<GenericParam<'a>>,
         params: Vec<Param<'a>>,
-        return_type: Option<Expression<'a>>,
+        return_type: Type<'a>,
         body: &'a str,
         start: usize,
         end: usize,
     },
 }
+
+impl Function<'_> {
+    pub fn new<'a>(
+        visibility: Visibility,
+        name: PathName<'a>,
+        generic_params: Vec<GenericParam<'a>>,
+        params: Vec<Param<'a>>,
+        return_type: Type<'a>,
+        body: Expression<'a>,
+        start: usize,
+        end: usize,
+    ) -> TopLevelStatement<'a> {
+        TopLevelStatement::Function(Function::Regular {
+            visibility,
+            name,
+            generic_params,
+            params,
+            return_type,
+            body,
+            start,
+            end,
+        })
+    }
+
+    pub fn new_extern<'a>(
+        visibility: Visibility,
+        language: &'a str,
+        name: PathName<'a>,
+        generic_params: Vec<GenericParam<'a>>,
+        params: Vec<Param<'a>>,
+        return_type: Type<'a>,
+        body: &'a str,
+        start: usize,
+        end: usize,
+    ) -> TopLevelStatement<'a> {
+        TopLevelStatement::Function(Function::Extern {
+            visibility,
+            language,
+            name,
+            generic_params,
+            params,
+            return_type,
+            body,
+            start,
+            end,
+        })
+    }
+} 
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Struct<'a> {
@@ -68,6 +116,26 @@ pub struct Struct<'a> {
     pub end: usize,
 }
 
+impl Struct<'_> {
+    pub fn new<'a>(
+        visibility: Visibility,
+        name: &'a str,
+        generic_params: Vec<GenericParam<'a>>,
+        fields: Vec<Field<'a>>,
+        start: usize,
+        end: usize,
+    ) -> TopLevelStatement<'a> {
+        TopLevelStatement::Struct(Struct {
+            visibility,
+            name,
+            generic_params,
+            fields,
+            start,
+            end,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Field<'a> {
     pub visibility: Visibility,
@@ -75,6 +143,12 @@ pub struct Field<'a> {
     pub ty: Type<'a>,
     pub start: usize,
     pub end: usize,
+}
+
+impl Field<'_> {
+    pub fn new<'a>(visibility: Visibility, name: &'a str, ty: Type<'a>, start: usize, end: usize) -> Field<'a> {
+        Field { visibility, name, ty, start, end }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -87,12 +161,38 @@ pub struct Enum<'a> {
     pub end: usize,
 }
 
+impl Enum<'_> {
+    pub fn new<'a>(
+        visibility: Visibility,
+        name: &'a str,
+        generic_params: Vec<GenericParam<'a>>,
+        variants: Vec<Variant<'a>>,
+        start: usize,
+        end: usize,
+    ) -> TopLevelStatement<'a> {
+        TopLevelStatement::Enum(Enum {
+            visibility,
+            name,
+            generic_params,
+            variants,
+            start,
+            end,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Variant<'a> {
     pub name: &'a str,
     pub fields: Vec<Field<'a>>,
     pub start: usize,
     pub end: usize,
+}
+
+impl Variant<'_> {
+    pub fn new<'a>(name: &'a str, fields: Vec<Field<'a>>, start: usize, end: usize) -> Variant<'a> {
+        Variant { name, fields, start, end }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -102,6 +202,12 @@ pub struct Const<'a> {
     pub value: Expression<'a>,
     pub start: usize,
     pub end: usize,
+}
+
+impl Const<'_> {
+    pub fn new<'a>(visibility: Visibility, name: PathName<'a>, value: Expression<'a>, start: usize, end: usize) -> TopLevelStatement<'a> {
+        TopLevelStatement::Const(Const { visibility, name, value, start, end })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -120,26 +226,47 @@ impl Import<'_> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GenericParam<'a> {
     pub name: &'a str,
-    pub constraints: Vec<Constraint<'a>>,
+    pub constraints: Vec<Type<'a>>,
     pub start: usize,
     pub end: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Constraint<'a> {
-    ty: Type<'a>,
+impl GenericParam<'_> {
+    pub fn new<'a>(name: &'a str, constraints: Vec<Type<'a>>, start: usize, end: usize) -> GenericParam<'a> {
+        GenericParam { name, constraints, start, end }
+    }
 }
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Param<'a> {
+    pub implicit: bool,
     pub name: &'a str,
     pub ty: Type<'a>,
     pub start: usize,
     pub end: usize,
 }
 
+impl Param<'_> {
+    pub fn new<'a>(implicit: bool, name: &'a str, ty: Type<'a>, start: usize, end: usize) -> Param<'a> {
+        Param { implicit, name, ty, start, end }
+    }
+}
+
+pub struct Type<'a> {
+    pub mutable: bool,
+    pub raw: TypeRaw<'a>,
+}
+
+impl Type<'_> {
+    pub fn new<'a>(mutable: bool, raw: TypeRaw<'a>) -> Type<'a> {
+        Type { mutable, raw }
+    }
+}
+
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Type<'a> {
+pub enum TypeRaw<'a> {
     Builtin(BuiltinType),
     Simple {
         name: PathName<'a>,
@@ -157,6 +284,24 @@ pub enum Type<'a> {
         start: usize,
         end: usize,
     },
+}
+
+impl TypeRaw<'_> {
+    pub fn new_builtin<'a>(builtin: BuiltinType) -> TypeRaw<'a> {
+        TypeRaw::Builtin(builtin)
+    }
+
+    pub fn new_simple<'a>(name: PathName<'a>, start: usize, end: usize) -> TypeRaw<'a> {
+        TypeRaw::Simple { name, start, end }
+    }
+
+    pub fn new_generic<'a>(name: PathName<'a>, params: Vec<Type<'a>>, start: usize, end: usize) -> TypeRaw<'a> {
+        TypeRaw::Generic { name, params, start, end }
+    }
+
+    pub fn new_expression<'a>(expr: Box<Expression<'a>>, start: usize, end: usize) -> TypeRaw<'a> {
+        TypeRaw::Expression { expr, start, end }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -177,7 +322,8 @@ pub enum BuiltinType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Expression<'a> {
-    Sequence(Box<Expression<'a>>, Option<Box<Expression<'a>>>),
+    Blank,
+    Sequence(Vec<Expression<'a>>),
     Variable(&'a str),
     Type(Type<'a>),
     Literal(Literal<'a>),
@@ -223,10 +369,61 @@ pub enum Expression<'a> {
     },
 }
 
+impl Expression<'_> {
+    pub fn new_binary<'a>(
+        operator: BinaryOperator,
+        left: Box<Expression<'a>>,
+        right: Box<Expression<'a>>,
+        start: usize,
+        end: usize,
+    ) -> Expression<'a> {
+        Expression::BinaryOperation { operator, left, right, start, end }
+    }
+
+    pub fn new_unary<'a>(
+        operator: UnaryOperator,
+        operand: Box<Expression<'a>>,
+        start: usize,
+        end: usize,
+    ) -> Expression<'a> {
+        Expression::UnaryOperation { operator, operand, start, end }
+    }
+
+    pub fn new_let<'a>(
+        name: &'a str,
+        ty: Type<'a>,
+        value: Box<Expression<'a>>,
+        start: usize,
+        end: usize,
+    ) -> Expression<'a> {
+        Expression::LetExpression { name, ty, value, start, end }
+    }
+
+    pub fn new_const<'a>(
+        name: &'a str,
+        ty: Type<'a>,
+        value: Box<Expression<'a>>,
+        start: usize,
+        end: usize,
+    ) -> Expression<'a> {
+        Expression::ConstExpression { name, ty, value, start, end }
+    }
+
+    pub fn new_assignment<'a>(
+        target: Box<Expression<'a>>,
+        value: Box<Expression<'a>>,
+        start: usize,
+        end: usize,
+    ) -> Expression<'a> {
+        Expression::Assignment { target, value, start, end }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum UnaryOperator {
     Neg,
     Not,
+    Try,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
