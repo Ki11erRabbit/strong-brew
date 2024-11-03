@@ -195,16 +195,16 @@ pub RawType: RawType<'a> = {
     "bool" => RawType::new_builtin(BuiltinType::Bool),
     "(" ")" => RawType::new_builtin(BuiltinType::Unit),
     "!" => RawType::new_builtin(BuiltinType::Never),
-    <start: @L> <p:Path> <end: @R> => RawType::new_simple(p, start, end),
-    <start: @L> <p:Path> "<" <arg:Type> <args:("," Type)*> ">" <end: @R> => {
+    //<start: @L> <p:Path> <end: @R> => RawType::new_simple(p, start, end),
+    <start: @L> <p:Path> "<" <arg:Type> <args:("," <Type>)*> ">" <end: @R> => {
         let mut v = vec![arg];
         for a in args.into_iter() {
-            v.push(a.1);
+            v.push(a);
         }
         RawType::new_generic(p, v, start, end)
     },
-    // TODO: Do expression type
 };
+
 
 pub TypeParamList: Vec<GenericParam<'a>> = {
     "<" <param:TypeParam> <params:("," <TypeParam>)*> ">" => {
@@ -308,14 +308,17 @@ Statement: Statement<'a> = {
     <start: @L> <lhs:Expr> "=" <rhs:Expr> <end: @R> => {
         Statement::new_assignment(lhs, rhs, start, end)
     },
-    <start: @L> <expr:Expr> <end: @R> => Statement::Expression(expr),
+    <start: @L> <expr:ExpressionType> <end: @R> => {
+
+        Statement::Expression(expr)
+    },
 };
 
-/*ExprSequence: Expr<'a> = {
-    <expr:(<Expr> (Lb <Expr>)*)> => {
-        Expression::Sequence(expr)
-    }
-};*/
+
+ExpressionType: ExpressionType<'a> = {
+    <start: @L> <expr:Expr> <end: @R> => ExpressionType::new(false, expr),
+    <start: @L> "mut" <expr:Expr> <end: @R> => ExpressionType::new(true, expr),
+};
 
 TermExpr: Expression<'a> = {
     <id:Path> => Expression::Variable(id),
@@ -339,6 +342,25 @@ IndexExpr: Expression<'a> = {
         let obj = Box::new(obj);
         Expression::new_member_access(obj, name, start, end)
     },
+    /*"i8" => Expression::Type(TypeExpression::Builtin(BuiltinType::I8)),
+    "i16" => Expression::Type(TypeExpression::Builtin(BuiltinType::I16)),
+    "i32" => Expression::Type(TypeExpression::Builtin(BuiltinType::I32)),
+    "i64" => Expression::Type(TypeExpression::Builtin(BuiltinType::I64)),
+    "int" => Expression::Type(TypeExpression::Builtin(BuiltinType::Int)),
+    "nat" => Expression::Type(TypeExpression::Builtin(BuiltinType::Nat)),
+    "f32" => Expression::Type(TypeExpression::Builtin(BuiltinType::F32)),
+    "f64" => Expression::Type(TypeExpression::Builtin(BuiltinType::F64)),
+    "char" => Expression::Type(TypeExpression::Builtin(BuiltinType::Char)),
+    "bool" => Expression::Type(TypeExpression::Builtin(BuiltinType::Bool)),
+    "(" ")" => Expression::Type(TypeExpression::Builtin(BuiltinType::Unit)),
+    "!" => Expression::Type(TypeExpression::Builtin(BuiltinType::Never)),
+    <start: @L> <obj:IndexExpr> "[" <expr1:Expr> <exprs:("," <Expr>)*> "]"  <end: @R> => {
+        let mut v = vec![expr1];
+        for e in exprs.into_iter() {
+            v.push(e);
+        }
+        Expression::Type(TypeExpression::Generic{ name: obj, params: v, start, end })
+    },*/
 };
 
 FactorExpr: Expression<'a> = {
@@ -521,8 +543,6 @@ Constructor : Vec<Pattern<'a>> = {
     ("(" ")") => Vec::new(),
 };
 
-
-
 Literal: Literal<'a> = {
     <int:Int_lit> => Literal::Int(int),
     <float:Float_lit> => Literal::Float(float),
@@ -606,5 +626,45 @@ TypeArgList: Vec<Type<'a>> = {
 };
 
 
+TermTypeExpr: Expression<'a> = {
+    <id:Path> => Expression::Variable(id),
+}
 
+IndexTypeExpr: Expression<'a> = {
+    <term:TermTypeExpr> => term,
+    <start: @L> <lhs:IndexTypeExpr> "[" <index:Expr> "]" <end: @R> => {
+        let lhs = Box::new(lhs);
+        let index = Box::new(index);
+        Expression::new_binary(BinaryOperator::Index, lhs, index, start, end)
+    },
+    <start: @L> <obj:IndexTypeExpr> "." <name:Identifier> <end: @R> => {
+        let obj = Box::new(obj);
+        Expression::new_member_access(obj, name, start, end)
+    },
+};
+
+CallTypeExpr: Expression<'a> = {
+    <idx:IndexTypeExpr> => idx,
+    <call:TypeCall> => Expression::Call(call),
+};
+
+TrailingTypeExpr: Expression<'a> = {
+    <call:CallTypeExpr> => call,
+};
+
+ConditionalTypeExpr: Expression<'a> = {
+    <trail:TrailingTypeExpr> => trail,
+    <if_:IfExpr> => Expression::IfExpression(if_),
+    <match_:MatchExpr> => Expression::MatchExpression(match_),
+};
+
+TypeExpr: Expression<'a> = {
+    <expr:ConditionalTypeExpr> => expr,
+};
+
+TypeCall: Call<'a> = {
+    <start: @L> <callee:IndexTypeExpr> <args:ArgList> <end: @R> => {
+        Call::new(Box::new(callee), Vec::new(), args, start, end)
+    },
+};
 

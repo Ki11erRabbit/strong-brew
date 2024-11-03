@@ -283,11 +283,6 @@ pub enum RawType<'a> {
         start: usize,
         end: usize,
     },
-    Expression {
-        expr: Box<Expression<'a>>,
-        start: usize,
-        end: usize,
-    },
 }
 
 impl RawType<'_> {
@@ -301,10 +296,6 @@ impl RawType<'_> {
 
     pub fn new_generic<'a>(name: PathName<'a>, params: Vec<Type<'a>>, start: usize, end: usize) -> RawType<'a> {
         RawType::Generic { name, params, start, end }
-    }
-
-    pub fn new_expression<'a>(expr: Box<Expression<'a>>, start: usize, end: usize) -> RawType<'a> {
-        RawType::Expression { expr, start, end }
     }
 }
 
@@ -327,7 +318,7 @@ pub enum BuiltinType {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Statement<'a> {
-    Expression(Expression<'a>),
+    Expression(ExpressionType<'a>),
     Let {
         name: &'a str,
         ty: Type<'a>,
@@ -365,9 +356,21 @@ impl Statement<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub struct ExpressionType<'a> {
+    pub mutable: bool,
+    pub expression: Expression<'a>,
+}
+
+impl ExpressionType<'_> {
+    pub fn new<'a>(mutable: bool, expression: Expression<'a>) -> ExpressionType<'a> {
+        ExpressionType { mutable, expression }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Expression<'a> {
+    Type(TypeExpression<'a>),
     Variable(PathName<'a>),
-    Type(Type<'a>),
     Literal(Literal<'a>),
     Call(Call<'a>),
     TrailingLambdas(Box<Expression<'a>>, Vec<Expression<'a>>, usize, usize),
@@ -591,4 +594,17 @@ pub enum Visibility {
     Public,
     Private,
 }
+
+
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub enum TypeExpression<'a> {
+    Builtin(BuiltinType),
+    Generic {
+        name: Box<Expression<'a>>,
+        params: Vec<Expression<'a>>,
+        start: usize,
+        end: usize,
+    },
+}
+
 
