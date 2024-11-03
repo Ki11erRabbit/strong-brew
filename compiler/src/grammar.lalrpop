@@ -489,14 +489,23 @@ FactorExpr: Expression<'a> = {
     },
 };
 
-SumExpr: Expression<'a> = {
+ConcatExpr: Expression<'a> = {
     <factor:FactorExpr> => factor,
-    <start: @L> <lhs:SumExpr> Plus <rhs:FactorExpr> <end: @R> => {
+    <start: @L> <lhs:ConcatExpr> Concat <rhs:FactorExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Concat, lhs, rhs, start, end)
+    },
+};
+
+SumExpr: Expression<'a> = {
+    <concat:ConcatExpr> => concat,
+    <start: @L> <lhs:SumExpr> Plus <rhs:ConcatExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Add, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:SumExpr> Minus <rhs:FactorExpr> <end: @R> => {
+    <start: @L> <lhs:SumExpr> Minus <rhs:ConcatExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Sub, lhs, rhs, start, end)
