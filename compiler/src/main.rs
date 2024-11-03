@@ -7,7 +7,15 @@ fn main() {
 import std::io;
 pub fn print() {
     let x: i64 = j;
-    return x
+    return x;
+    if x == 0 {
+        return 0
+    }
+    x.print
+    x.print()
+    x.map |x: i64| -> () {
+        x.print()
+    }
 
 }
 "#;

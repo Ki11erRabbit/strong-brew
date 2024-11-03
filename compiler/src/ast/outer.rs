@@ -560,17 +560,11 @@ pub struct MatchArm<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Pattern<'a> {
-    Wildcard,
     Variable(&'a str),
     Literal(Literal<'a>),
     Tuple(Vec<Pattern<'a>>),
-    Struct {
+    Constructor {
         name: PathName<'a>,
-        fields: Vec<Pattern<'a>>,
-    },
-    Enum {
-        name: PathName<'a>,
-        variant: &'a str,
         fields: Vec<Pattern<'a>>,
     },
 }

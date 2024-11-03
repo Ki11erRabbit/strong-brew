@@ -307,6 +307,7 @@ Statement: Statement<'a> = {
     <start: @L> <lhs:Expr> "=" <rhs:Expr> <end: @R> => {
         Statement::new_assignment(lhs, rhs, start, end)
     },
+    <start: @L> <expr:Expr> <end: @R> => Statement::Expression(expr),
 };
 
 /*ExprSequence: Expr<'a> = {

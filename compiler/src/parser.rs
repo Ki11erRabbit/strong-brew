@@ -66,13 +66,14 @@ pub fn parse<'a>(name: &str, input: &'a str) -> Result<outer::File<'a>, ()> {
                 ParseError::UnrecognizedToken { token, expected } => {
                     let (start, token, end) = token;
                     let mut colors = ColorGenerator::new();
+                    let oneof = expected.iter().map(|x| format!("{}", x)).reduce(|x, y| format!("{}, {}", x, y)).unwrap();
                     ariadne::Report::build(ReportKind::Error, (name, start..end))
                         .with_label(
                             Label::new((name, start..end))
                                 .with_message(format!("Unrecognized token: {}", token))
                                 .with_color(colors.next()),
                         )
-                        .with_note(format!("Expected one of: {:?}", expected))
+                        .with_note(format!("Expected one of: {}", oneof))
                         .finish()
                         .print((name, Source::from(input)))
                         .unwrap();
