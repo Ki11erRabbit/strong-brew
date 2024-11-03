@@ -205,6 +205,7 @@ pub enum LexerError {
     UnclosedComment,
     UnknownError,
     ErrorCollection(Vec<SpannedLexerError>),
+    InvalidOperator,
     Eof,
 }
 
@@ -224,6 +225,7 @@ impl std::fmt::Display for LexerError {
                 }
                 Ok(())
             }
+            LexerError::InvalidOperator => write!(f, "Invalid operator, expected either get[] or set[]"),
             LexerError::Eof => write!(f, "End of file"),
         }
     }

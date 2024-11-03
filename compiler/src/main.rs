@@ -18,6 +18,13 @@ pub fn print() = {
     };
 
 }
+pub fn (==)[A](x: A, y: A) = {
+    return x == y;
+}
+
+pub fn (set[])[A](list: list[A], index: i64, value: A) = {
+    list[index] = value;
+}
 "#;
     let file = parser::parse("test.txt", input).unwrap();
     println!("{:#?}", file);

@@ -1,6 +1,7 @@
-use crate::parser::lexer::{Token, TokenLexer, SpannedLexerError};
+use crate::parser::lexer::{Token, TokenLexer, SpannedLexerError, LexerError};
 use crate::ast::outer::*;
 use either::Either;
+use lalrpop_util::ParseError;
 
 grammar<'a>(input: &'a str);
 
@@ -43,20 +44,20 @@ extern {
         Char_lit => Token::CharLiteral(<&'a str>),
         String_lit => Token::StringLiteral(<&'a str>),
         Identifier => Token::Identifier(<&'a str>),
-        "+" => Token::Plus,
-        "-" => Token::Minus,
-        "*" => Token::Multiply,
-        "/" => Token::Divide,
-        "%" => Token::Modulo,
-        "!" => Token::Not,
-        "||" => Token::Or,
-        "&&" => Token::And,
-        "==" => Token::Equals,
-        "!=" => Token::NotEquals,
-        "<=" => Token::LessThanOrEqual,
-        ">=" => Token::GreaterThanOrEqual,
-        "=" => Token::Assign,
-        "++" => Token::Concat,
+        Plus => Token::Plus,
+        Minus => Token::Minus,
+        Mult => Token::Multiply,
+        Div => Token::Divide,
+        Mod => Token::Modulo,
+        Not => Token::Not,
+        Or => Token::Or,
+        And => Token::And,
+        Equals => Token::Equals,
+        NotEquals => Token::NotEquals,
+        LtE => Token::LessThanOrEqual,
+        GtE => Token::GreaterThanOrEqual,
+        Assign => Token::Assign,
+        Concat => Token::Concat,
         "::" => Token::Scope,
         "{" => Token::BraceOpen,
         "}" => Token::BraceClose,
@@ -64,8 +65,8 @@ extern {
         ")" => Token::ParenClose,
         "[" => Token::BracketOpen,
         "]" => Token::BracketClose,
-        "<" => Token::AngleOpen,
-        ">" => Token::AngleClose,
+        AngleOpen => Token::AngleOpen,
+        AngleClose => Token::AngleClose,
         "," => Token::Comma,
         ":" => Token::Colon,
         "?" => Token::QMark,
@@ -81,24 +82,16 @@ extern {
 
 
 pub File: File<'a> = {
-    "module" <p:Path> Lb <decs:(Lb* <Decl> Lb)*> Lb* => File::new(p, decs),
+    "module" <p:Path> <id:Identifier> Lb <decs:(Lb* <Decl> Lb)*> Lb* => {
+        let mut p = p;
+        p.segments.push(id);
+        File::new(p, decs)
+    },
 };
 
-pub Path: PathName<'a> = {
-    <start: @L> <id:Identifier> <rest:("::" <Identifier>)*> <end: @R> => {
-        /*let id = match id {
-            Token::Identifier(id) => id,
-            _ => unreachable!(),
-        };*/
-               
-        let mut segments = vec![id];
-        for r in rest.into_iter() {
-            //match r {
-                segments.push(id);
-             //   _ => unreachable!(),
-            //}
-        }
-        
+#[inline]
+Path: PathName<'a> = {
+    <start: @L> <segments:(<Identifier> "::")*> <end: @R> => {
         PathName::new(segments, start, end)
     },
 };
@@ -113,7 +106,11 @@ pub Visibility: Visibility = {
 };
 
 pub Decl: TopLevelStatement<'a> = {
-    <start: @L> "import" <p:Path> <end: @R> => Import::new(p, start, end),
+    <start: @L> "import" <p:Path> <id:Identifier> <end: @R> => {
+        let mut p = p;
+        p.segments.push(id);
+        Import::new(p, start, end)
+    },
     <f:Function> => f,
     <s:Struct> => s,
     <e:Enum> => e,
@@ -123,26 +120,170 @@ pub Decl: TopLevelStatement<'a> = {
 pub Function: TopLevelStatement<'a> = {
     <r:RegularFunction> => r,
     <e:ExternFunction> => e,
+    <o:OperatorFunction> => o,
 };
 
 pub RegularFunction: TopLevelStatement<'a> = {
-    <start: @L> <vis:Visibility> "fn" <name:Path> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> "=" <body:Block> <end: @R> => {
+    <start: @L> <vis:Visibility> "fn" <p:Path> <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let mut p = p;
+        p.segments.push(name);
         let typaram = match typaram {
             Some(t) => t,
             None => Vec::new(),
         };
-        Function::new(vis, name, typaram, params, ret, body, start, end)
+        Function::new(vis, p, typaram, params, ret, body, start, end)
     }
 };
 
 pub ExternFunction: TopLevelStatement<'a> = {
-    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> "=" <body:String_lit> <end: @R> => {
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <p:Path> <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let mut p = p;
+        p.segments.push(name);
         let typaram = match typaram {
             Some(t) => t,
             None => Vec::new(),
         };
-        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+        Function::new_extern(vis, lang, p, typaram, params, ret, body, start, end)
     }
+};
+
+OperatorFunction: TopLevelStatement<'a> = {
+    // Equals Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Equals ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("==");
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Not Equals Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" NotEquals ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("!=");
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Less Than Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path>  "(" AngleOpen ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("<");
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Greater Than Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" AngleClose ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push(">");
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Less Than Equals Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" LtE ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("<=");
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Greater Than Equals Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" GtE ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push(">=");
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Concat Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Concat ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("++");
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Add Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Plus ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("+");
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Subtract Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Minus ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("-");
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Multiply Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Mult ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("*");
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Divide Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Div ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("/");
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Modulo Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Mod ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("%");
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Get and set Operators
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" <id:Identifier> "[" "]" ")" <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> =>? {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        match id {
+            "get" => name.segments.push("get[]"),
+            "set" => name.segments.push("set[]"),
+            _ => return Err(ParseError::User {
+                error: SpannedLexerError::new(LexerError::InvalidOperator, start, end),
+            }),
+        }
+        Ok(Function::new(vis, name, typaram, params, ret, body, start, end))
+    },
 };
 
 pub ParamList: Vec<Param<'a>> = {
@@ -252,7 +393,11 @@ pub EnumFields: Vec<Field<'a>> = {
 
 
 Const: TopLevelStatement<'a> = {
-    <start: @L> <vis:Visibility> "const" <name:Path> ":" <ty:ExpressionType> "=" <val:Expr> <end: @R> => Const::new(vis, name, ty, val, start, end),
+    <start: @L> <vis:Visibility> "const" <p:Path> <name:Identifier> ":" <ty:ExpressionType> Assign <val:Expr> <end: @R> => {
+        let mut p = p;
+        p.segments.push(name);
+        Const::new(vis, p, ty, val, start, end)
+    },
 };
 
 
@@ -267,13 +412,13 @@ Block: Vec<Statement<'a>> = {
 };
 
 Statement: Statement<'a> = {
-    <start: @L> "let" <id:Identifier> ":" <ty:ExpressionType> "=" <rhs:ExpressionType> <end: @R> => {
+    <start: @L> "let" <id:Identifier> ":" <ty:ExpressionType> Assign <rhs:ExpressionType> <end: @R> => {
         Statement::new_let(id, ty, rhs, start, end)
     },
-    <start: @L> "const" <id:Identifier> ":" <ty:ExpressionType> "=" <rhs:ExpressionType> <end: @R> => {
+    <start: @L> "const" <id:Identifier> ":" <ty:ExpressionType> Assign <rhs:ExpressionType> <end: @R> => {
         Statement::new_const(id, ty, rhs, start, end)
     },
-    <start: @L> <lhs:ExpressionTypeTrailing> "=" <rhs:ExpressionTypeTrailing> <end: @R> => {
+    <start: @L> <lhs:ExpressionTypeTrailing> Assign <rhs:ExpressionTypeTrailing> <end: @R> => {
         Statement::new_assignment(lhs, rhs, start, end)
     },
     <start: @L> <expr:ExpressionTypeTrailing> <end: @R> => {
@@ -294,10 +439,14 @@ ExpressionTypeTrailing: ExpressionType<'a> = {
 };
 
 TermExpr: Expression<'a> = {
-    <id:Path> => Expression::Variable(id),
+    <p:Path> <id:Identifier> => {
+        let mut p = p;
+        p.segments.push(id);
+        Expression::Variable(p)
+    },
     <lit:Literal> => Expression::Literal(lit),
     <tuple:Tuple> => Expression::Literal(tuple),
-    <start: @L> "-" <expr:TermExpr> <end: @R> => {
+    <start: @L> Minus <expr:TermExpr> <end: @R> => {
         let expr = Box::new(expr);
         Expression::new_unary(UnaryOperator::Neg, expr, start, end)
     },
@@ -323,17 +472,17 @@ IndexExpr: Expression<'a> = {
 
 FactorExpr: Expression<'a> = {
     <term:IndexExpr> => term,
-    <start: @L> <lhs:FactorExpr> "*" <rhs:IndexExpr> <end: @R> => {
+    <start: @L> <lhs:FactorExpr> Mult <rhs:IndexExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Mul, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:FactorExpr> "/" <rhs:IndexExpr> <end: @R> => {
+    <start: @L> <lhs:FactorExpr> Div <rhs:IndexExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Div, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:FactorExpr> "%" <rhs:IndexExpr> <end: @R> => {
+    <start: @L> <lhs:FactorExpr> Mod <rhs:IndexExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Mod, lhs, rhs, start, end)
@@ -342,12 +491,12 @@ FactorExpr: Expression<'a> = {
 
 SumExpr: Expression<'a> = {
     <factor:FactorExpr> => factor,
-    <start: @L> <lhs:SumExpr> "+" <rhs:FactorExpr> <end: @R> => {
+    <start: @L> <lhs:SumExpr> Plus <rhs:FactorExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Add, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:SumExpr> "-" <rhs:FactorExpr> <end: @R> => {
+    <start: @L> <lhs:SumExpr> Minus <rhs:FactorExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Sub, lhs, rhs, start, end)
@@ -356,32 +505,32 @@ SumExpr: Expression<'a> = {
 
 CompareExpr: Expression<'a> = {
     <sum:SumExpr> => sum,
-    <start: @L> <lhs:CompareExpr> "==" <rhs:SumExpr> <end: @R> => {
+    <start: @L> <lhs:CompareExpr> Equals <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Eq, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:CompareExpr> "!=" <rhs:SumExpr> <end: @R> => {
+    <start: @L> <lhs:CompareExpr> NotEquals <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Ne, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:CompareExpr> "<" <rhs:SumExpr> <end: @R> => {
+    <start: @L> <lhs:CompareExpr> AngleOpen <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Lt, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:CompareExpr> "<=" <rhs:SumExpr> <end: @R> => {
+    <start: @L> <lhs:CompareExpr> LtE <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Le, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:CompareExpr> ">" <rhs:SumExpr> <end: @R> => {
+    <start: @L> <lhs:CompareExpr> AngleClose <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Gt, lhs, rhs, start, end)
     },
-    <start: @L> <lhs:CompareExpr> ">=" <rhs:SumExpr> <end: @R> => {
+    <start: @L> <lhs:CompareExpr> GtE <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Ge, lhs, rhs, start, end)
@@ -389,7 +538,7 @@ CompareExpr: Expression<'a> = {
 };
 
 NotExpr: Expression<'a> = {
-    <start: @L> "!" <expr:CompareExpr> <end: @R> => {
+    <start: @L> Not <expr:CompareExpr> <end: @R> => {
         let expr = Box::new(expr);
         Expression::new_unary(UnaryOperator::Not, expr, start, end)
     },
@@ -398,7 +547,7 @@ NotExpr: Expression<'a> = {
 
 ConjExpr: Expression<'a> = {
     <not:NotExpr> => not,
-    <start: @L> <lhs:ConjExpr> "&&" <rhs:NotExpr> <end: @R> => {
+    <start: @L> <lhs:ConjExpr> And <rhs:NotExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::And, lhs, rhs, start, end)
@@ -407,7 +556,7 @@ ConjExpr: Expression<'a> = {
 
 DisjExpr: Expression<'a> = {
     <conj:ConjExpr> => conj,
-    <start: @L> <lhs:DisjExpr> "||" <rhs:ConjExpr> <end: @R> => {
+    <start: @L> <lhs:DisjExpr> Or <rhs:ConjExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Or, lhs, rhs, start, end)
@@ -518,7 +667,11 @@ Pattern: Pattern<'a> = {
         }
         Pattern::Tuple(v)
     },
-    <path:Path> <body:Constructor> => Pattern::Constructor { name: path, fields: body },
+    <path:Path> <id:Identifier> <body:Constructor> => {
+        let mut p = path;
+        p.segments.push(id);
+        Pattern::Constructor { name: p, fields: body }
+    },
 };
 
 Constructor : Vec<Pattern<'a>> = {
@@ -553,7 +706,7 @@ Tuple: Literal<'a> = {
 };
 
 Closure: Expression<'a> = {
-    <start: @L> <params:ClosureParamList> <ret:ReturnType> "=" <body:Block> <end: @R> => Closure::new(params, Some(ret), body, start, end),
+    <start: @L> <params:ClosureParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => Closure::new(params, Some(ret), body, start, end),
     <start: @L> <body:Block> <end: @R> => Closure::new(Vec::new(), None, body, start, end),
     //<start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Expr> <end: @R> => Closure::new(params, ret, vec![Statement::Expression(body)], start, end),
 
@@ -599,7 +752,7 @@ ArgList: Vec<CallArg<'a>> = {
 };
 
 CallArg: CallArg<'a> = {
-    <start: @L> <name:(<Identifier> "=")?> <expr:Expr> <end: @R> => CallArg::new(name, expr, start, end),
+    <start: @L> <name:(<Identifier> Assign)?> <expr:Expr> <end: @R> => CallArg::new(name, expr, start, end),
 };
 
 TypeArgList: Vec<ExpressionType<'a>> = {
