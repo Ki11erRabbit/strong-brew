@@ -25,6 +25,10 @@ pub fn (==)[A](x: A, y: A) = {
 pub fn (set[])[A](list: list[A], index: i64, value: A) = {
     list[index] = value;
 }
+
+pub fn (-)(x: nat, y: nat) -> if y > x { return int } else { return nat } = {
+    return x - y;
+}
 "#;
     let file = parser::parse("test.txt", input).unwrap();
     println!("{:#?}", file);
