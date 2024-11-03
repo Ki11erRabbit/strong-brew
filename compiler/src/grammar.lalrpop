@@ -126,7 +126,7 @@ pub Function: TopLevelStatement<'a> = {
 };
 
 pub RegularFunction: TopLevelStatement<'a> = {
-    <start: @L> <vis:Visibility> "fn" <name:Path> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <body:Block> <end: @R> => {
+    <start: @L> <vis:Visibility> "fn" <name:Path> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> "=" <body:Block> <end: @R> => {
         let typaram = match typaram {
             Some(t) => t,
             None => Vec::new(),
@@ -136,7 +136,7 @@ pub RegularFunction: TopLevelStatement<'a> = {
 };
 
 pub ExternFunction: TopLevelStatement<'a> = {
-    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <body:String_lit> <end: @R> => {
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> "=" <body:String_lit> <end: @R> => {
         let typaram = match typaram {
             Some(t) => t,
             None => Vec::new(),
@@ -159,62 +159,30 @@ pub ParamList: Vec<Param<'a>> = {
 };
 
 pub Param: Param<'a> = {
-    <start: @L> <name:Identifier> ":" <ty:Type> <end: @R> => Param::new(false, name, ty, start, end),
-    <start: @L> "?" <name:Identifier> ":" <ty:Type> <end: @R> => Param::new(true, name, ty, start, end),
+    <start: @L> <name:Identifier> ":" <ty:ExpressionType> <end: @R> => Param::new(false, name, ty, start, end),
+    <start: @L> "?" <name:Identifier> ":" <ty:ExpressionType> <end: @R> => Param::new(true, name, ty, start, end),
 };
 
-pub ReturnType: Type<'a> = {
-    <ty:("->" <Type>)?> => {
+pub ReturnType: Box<ExpressionType<'a>> = {
+    <ty:("->" <ExpressionType>)?> => {
         match ty {
-            Some(t) => t,
-            None => Type::new(false, RawType::new_builtin(BuiltinType::Unit)),
+            Some(t) => Box::new(t),
+            None => Box::new(ExpressionType::new(false, Expression::Literal(Literal::Unit))),
         }
     },
 };
 
-
-pub Type: Type<'a> = {
-    <m:("mut")?> <ty:RawType> => {
-        match m {
-            Some(_) => Type::new(true, ty),
-            None => Type::new(false, ty),
-        }
-    },
-};
-
-pub RawType: RawType<'a> = {
-    "i8" => RawType::new_builtin(BuiltinType::I8),
-    "i16" => RawType::new_builtin(BuiltinType::I16),
-    "i32" => RawType::new_builtin(BuiltinType::I32),
-    "i64" => RawType::new_builtin(BuiltinType::I64),
-    "int" => RawType::new_builtin(BuiltinType::Int),
-    "nat" => RawType::new_builtin(BuiltinType::Nat),
-    "f32" => RawType::new_builtin(BuiltinType::F32),
-    "f64" => RawType::new_builtin(BuiltinType::F64),
-    "char" => RawType::new_builtin(BuiltinType::Char),
-    "bool" => RawType::new_builtin(BuiltinType::Bool),
-    "(" ")" => RawType::new_builtin(BuiltinType::Unit),
-    "!" => RawType::new_builtin(BuiltinType::Never),
-    //<start: @L> <p:Path> <end: @R> => RawType::new_simple(p, start, end),
-    <start: @L> <p:Path> "<" <arg:Type> <args:("," <Type>)*> ">" <end: @R> => {
-        let mut v = vec![arg];
-        for a in args.into_iter() {
-            v.push(a);
-        }
-        RawType::new_generic(p, v, start, end)
-    },
-};
 
 
 pub TypeParamList: Vec<GenericParam<'a>> = {
-    "<" <param:TypeParam> <params:("," <TypeParam>)*> ">" => {
+    "[" <param:TypeParam> <params:("," <TypeParam>)*> "]" => {
         let mut v = vec![param];
         for p in params.into_iter() {
             v.push(p);
         }
         v
     },
-    "<" ">" => {
+    "[" "]" => {
         Vec::new()
     },
 
@@ -223,13 +191,13 @@ pub TypeParamList: Vec<GenericParam<'a>> = {
 
 pub TypeParam: GenericParam<'a> = {
     <start: @L> <name:Identifier> <end: @R> => GenericParam::new(name, Vec::new(), start, end),
-    <start: @L> <name:Identifier> ":" <param:Type> <params:("+" <Type>)*>  <end: @R> => {
+    /*<start: @L> <name:Identifier> ":" <param:ExpressionType> <params:("|" <ExpressionType>)*>  <end: @R> => {
         let mut v = vec![param];
         for p in params.into_iter() {
             v.push(p);
         }
         GenericParam::new(name, v, start, end)
-    },
+    },*/
 };
 
 pub Struct: TopLevelStatement<'a> = {
@@ -248,7 +216,7 @@ pub StructFields: Vec<Field<'a>> = {
 };
 
 pub Field: Field<'a> = {
-    <start: @L> <vis:Visibility> <name:Identifier> ":" <ty:Type> <end: @R> => Field::new(vis, name, ty, start, end),
+    <start: @L> <vis:Visibility> <name:Identifier> ":" <ty:ExpressionType> <end: @R> => Field::new(vis, name, ty, start, end),
 };
 
 pub Enum: TopLevelStatement<'a> = {
@@ -284,7 +252,7 @@ pub EnumFields: Vec<Field<'a>> = {
 
 
 Const: TopLevelStatement<'a> = {
-    <start: @L> <vis:Visibility> "const" <name:Path> ":" <ty:Type> "=" <val:Expr> <end: @R> => Const::new(vis, name, ty, val, start, end),
+    <start: @L> <vis:Visibility> "const" <name:Path> ":" <ty:ExpressionType> "=" <val:Expr> <end: @R> => Const::new(vis, name, ty, val, start, end),
 };
 
 
@@ -299,10 +267,10 @@ Block: Vec<Statement<'a>> = {
 };
 
 Statement: Statement<'a> = {
-    <start: @L> "let" <id:Identifier> ":" <ty:Type> "=" <rhs:Expr> <end: @R> => {
+    <start: @L> "let" <id:Identifier> ":" <ty:ExpressionType> "=" <rhs:Expr> <end: @R> => {
         Statement::new_let(id, ty, rhs, start, end)
     },
-    <start: @L> "const" <id:Identifier> ":" <ty:Type> "=" <rhs:Expr> <end: @R> => {
+    <start: @L> "const" <id:Identifier> ":" <ty:ExpressionType> "=" <rhs:Expr> <end: @R> => {
         Statement::new_const(id, ty, rhs, start, end)
     },
     <start: @L> <lhs:Expr> "=" <rhs:Expr> <end: @R> => {
@@ -472,13 +440,14 @@ ExprWithoutTrailing: Expression<'a> = {
 
 Expr: Expression<'a> = {
     <expr:ExprWithoutTrailing> => expr,
-    <trail:Trailing> => trail,
     <lambda:Closure> => lambda,
+    <trail:Trailing> => trail,
 };
 
 
 ExprType: Expression<'a> = {
-    <expr:Expr> => expr,
+    <expr:ExprWithoutTrailing> => expr,
+    <lambda:Closure> => lambda,
     "i8" => Expression::Type(BuiltinType::I8),
     "i16" => Expression::Type(BuiltinType::I16),
     "i32" => Expression::Type(BuiltinType::I32),
@@ -564,7 +533,7 @@ Tuple: Literal<'a> = {
 };
 
 Closure: Expression<'a> = {
-    <start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Block> <end: @R> => Closure::new(params, Some(ret), body, start, end),
+    <start: @L> <params:ClosureParamList> <ret:ReturnType> "=" <body:Block> <end: @R> => Closure::new(params, Some(ret), body, start, end),
     <start: @L> <body:Block> <end: @R> => Closure::new(Vec::new(), None, body, start, end),
     //<start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Expr> <end: @R> => Closure::new(params, ret, vec![Statement::Expression(body)], start, end),
     // TODO: add closure without paramlist and without return types
@@ -614,15 +583,15 @@ CallArg: CallArg<'a> = {
     <start: @L> <name:(<Identifier> "=")?> <expr:Expr> <end: @R> => CallArg::new(name, expr, start, end),
 };
 
-TypeArgList: Vec<Type<'a>> = {
-    "::" "<" <arg:Type> <args:("," <Type>)*> ">" => {
+TypeArgList: Vec<ExpressionType<'a>> = {
+    "::" "[" <arg:ExpressionType> <args:("," <ExpressionType>)*> "]" => {
         let mut v = vec![arg];
         for a in args.into_iter() {
             v.push(a);
         }
         v
     },
-    "::" "<" ">" => Vec::new(),
+    "::" "[" "]" => Vec::new(),
 };
 
 

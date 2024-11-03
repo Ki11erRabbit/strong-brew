@@ -42,7 +42,7 @@ pub enum Function<'a> {
         name: PathName<'a>,
         generic_params: Vec<GenericParam<'a>>,
         params: Vec<Param<'a>>,
-        return_type: Type<'a>,
+        return_type: Box<ExpressionType<'a>>,
         body: Vec<Statement<'a>>,
         start: usize,
         end: usize,
@@ -53,7 +53,7 @@ pub enum Function<'a> {
         name: PathName<'a>,
         generic_params: Vec<GenericParam<'a>>,
         params: Vec<Param<'a>>,
-        return_type: Type<'a>,
+        return_type: Box<ExpressionType<'a>>,
         body: &'a str,
         start: usize,
         end: usize,
@@ -66,7 +66,7 @@ impl Function<'_> {
         name: PathName<'a>,
         generic_params: Vec<GenericParam<'a>>,
         params: Vec<Param<'a>>,
-        return_type: Type<'a>,
+        return_type: Box<ExpressionType<'a>>,
         body: Vec<Statement<'a>>,
         start: usize,
         end: usize,
@@ -89,7 +89,7 @@ impl Function<'_> {
         name: PathName<'a>,
         generic_params: Vec<GenericParam<'a>>,
         params: Vec<Param<'a>>,
-        return_type: Type<'a>,
+        return_type: Box<ExpressionType<'a>>,
         body: &'a str,
         start: usize,
         end: usize,
@@ -142,13 +142,13 @@ impl Struct<'_> {
 pub struct Field<'a> {
     pub visibility: Visibility,
     pub name: &'a str,
-    pub ty: Type<'a>,
+    pub ty: ExpressionType<'a>,
     pub start: usize,
     pub end: usize,
 }
 
 impl Field<'_> {
-    pub fn new<'a>(visibility: Visibility, name: &'a str, ty: Type<'a>, start: usize, end: usize) -> Field<'a> {
+    pub fn new<'a>(visibility: Visibility, name: &'a str, ty: ExpressionType<'a>, start: usize, end: usize) -> Field<'a> {
         Field { visibility, name, ty, start, end }
     }
 }
@@ -201,14 +201,14 @@ impl Variant<'_> {
 pub struct Const<'a> {
     pub visibility: Visibility,
     pub name: PathName<'a>,
-    pub ty: Type<'a>,
+    pub ty: ExpressionType<'a>,
     pub value: Expression<'a>,
     pub start: usize,
     pub end: usize,
 }
 
 impl Const<'_> {
-    pub fn new<'a>(visibility: Visibility, name: PathName<'a>, ty: Type<'a>, value: Expression<'a>, start: usize, end: usize) -> TopLevelStatement<'a> {
+    pub fn new<'a>(visibility: Visibility, name: PathName<'a>, ty: ExpressionType<'a>, value: Expression<'a>, start: usize, end: usize) -> TopLevelStatement<'a> {
         TopLevelStatement::Const(Const { visibility, name, ty, value, start, end })
     }
 }
@@ -229,13 +229,13 @@ impl Import<'_> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct GenericParam<'a> {
     pub name: &'a str,
-    pub constraints: Vec<Type<'a>>,
+    pub constraints: Vec<ExpressionType<'a>>,
     pub start: usize,
     pub end: usize,
 }
 
 impl GenericParam<'_> {
-    pub fn new<'a>(name: &'a str, constraints: Vec<Type<'a>>, start: usize, end: usize) -> GenericParam<'a> {
+    pub fn new<'a>(name: &'a str, constraints: Vec<ExpressionType<'a>>, start: usize, end: usize) -> GenericParam<'a> {
         GenericParam { name, constraints, start, end }
     }
 }
@@ -245,59 +245,17 @@ impl GenericParam<'_> {
 pub struct Param<'a> {
     pub implicit: bool,
     pub name: &'a str,
-    pub ty: Type<'a>,
+    pub ty: ExpressionType<'a>,
     pub start: usize,
     pub end: usize,
 }
 
 impl Param<'_> {
-    pub fn new<'a>(implicit: bool, name: &'a str, ty: Type<'a>, start: usize, end: usize) -> Param<'a> {
+    pub fn new<'a>(implicit: bool, name: &'a str, ty: ExpressionType<'a>, start: usize, end: usize) -> Param<'a> {
         Param { implicit, name, ty, start, end }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Type<'a> {
-    pub mutable: bool,
-    pub raw: RawType<'a>,
-}
-
-impl Type<'_> {
-    pub fn new<'a>(mutable: bool, raw: RawType<'a>) -> Type<'a> {
-        Type { mutable, raw }
-    }
-}
-
-
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum RawType<'a> {
-    Builtin(BuiltinType),
-    Simple {
-        name: PathName<'a>,
-        start: usize,
-        end: usize,
-    },
-    Generic {
-        name: PathName<'a>,
-        params: Vec<Type<'a>>,
-        start: usize,
-        end: usize,
-    },
-}
-
-impl RawType<'_> {
-    pub fn new_builtin<'a>(builtin: BuiltinType) -> RawType<'a> {
-        RawType::Builtin(builtin)
-    }
-
-    pub fn new_simple<'a>(name: PathName<'a>, start: usize, end: usize) -> RawType<'a> {
-        RawType::Simple { name, start, end }
-    }
-
-    pub fn new_generic<'a>(name: PathName<'a>, params: Vec<Type<'a>>, start: usize, end: usize) -> RawType<'a> {
-        RawType::Generic { name, params, start, end }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum BuiltinType {
@@ -321,14 +279,14 @@ pub enum Statement<'a> {
     Expression(ExpressionType<'a>),
     Let {
         name: &'a str,
-        ty: Type<'a>,
+        ty: ExpressionType<'a>,
         value: Expression<'a>,
         start: usize,
         end: usize,
     },
     Const {
         name: &'a str,
-        ty: Type<'a>,
+        ty: ExpressionType<'a>,
         value: Expression<'a>,
         start: usize,
         end: usize,
@@ -342,11 +300,11 @@ pub enum Statement<'a> {
 }
 
 impl Statement<'_> {
-    pub fn new_let<'a>(name: &'a str, ty: Type<'a>, value: Expression<'a>, start: usize, end: usize) -> Statement<'a> {
+    pub fn new_let<'a>(name: &'a str, ty: ExpressionType<'a>, value: Expression<'a>, start: usize, end: usize) -> Statement<'a> {
         Statement::Let { name, ty, value, start, end }
     }
 
-    pub fn new_const<'a>(name: &'a str, ty: Type<'a>, value: Expression<'a>, start: usize, end: usize) -> Statement<'a> {
+    pub fn new_const<'a>(name: &'a str, ty: ExpressionType<'a>, value: Expression<'a>, start: usize, end: usize) -> Statement<'a> {
         Statement::Const { name, ty, value, start, end }
     }
 
@@ -480,7 +438,7 @@ pub enum Literal<'a> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Call<'a> {
     name: Box<Expression<'a>>,
-    type_args: Vec<Type<'a>>,
+    type_args: Vec<ExpressionType<'a>>,
     args: Vec<CallArg<'a>>,
     start: usize,
     end: usize,
@@ -489,7 +447,7 @@ pub struct Call<'a> {
 impl Call<'_> {
     pub fn new<'a>(
         name: Box<Expression<'a>>,
-        type_args: Vec<Type<'a>>,
+        type_args: Vec<ExpressionType<'a>>,
         args: Vec<CallArg<'a>>,
         start: usize,
         end: usize,
@@ -515,7 +473,7 @@ impl CallArg<'_> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Closure<'a> {
     pub params: Vec<Param<'a>>,
-    pub return_type: Option<Type<'a>>,
+    pub return_type: Option<Box<ExpressionType<'a>>>,
     pub body: Vec<Statement<'a>>,
     pub start: usize,
     pub end: usize,
@@ -524,7 +482,7 @@ pub struct Closure<'a> {
 impl Closure<'_> {
     pub fn new<'a>(
         params: Vec<Param<'a>>,
-        return_type: Option<Type<'a>>,
+        return_type: Option<Box<ExpressionType<'a>>>,
         body: Vec<Statement<'a>>,
         start: usize,
         end: usize,
