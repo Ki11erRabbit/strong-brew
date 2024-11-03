@@ -550,12 +550,29 @@ pub struct MatchExpression<'a> {
     pub end: usize,
 }
 
+impl MatchExpression<'_> {
+    pub fn new<'a>(
+        value: Box<Expression<'a>>,
+        arms: Vec<MatchArm<'a>>,
+        start: usize,
+        end: usize,
+    ) -> MatchExpression<'a> {
+        MatchExpression { value, arms, start, end }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct MatchArm<'a> {
     pub pattern: Pattern<'a>,
-    pub value: Expression<'a>,
+    pub value: Either<Expression<'a>, Vec<Statement<'a>>>,
     pub start: usize,
     pub end: usize,
+}
+
+impl MatchArm<'_> {
+    pub fn new<'a>(pattern: Pattern<'a>, value: Either<Expression<'a>, Vec<Statement<'a>>>, start: usize, end: usize) -> MatchArm<'a> {
+        MatchArm { pattern, value, start, end }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]

@@ -12,6 +12,7 @@ extern {
     enum Token<'a> {
         "if" => Token::If,
         "else" => Token::Else,
+        "match" => Token::Match,
         "fn" => Token::Fun,
         "return" => Token::Return,
         "break" => Token::Break,
@@ -319,6 +320,7 @@ Statement: Statement<'a> = {
 TermExpr: Expression<'a> = {
     <id:Path> => Expression::Variable(id),
     <lit:Literal> => Expression::Literal(lit),
+    <tuple:Tuple> => Expression::Literal(tuple),
     <start: @L> "-" <expr:TermExpr> <end: @R> => {
         let expr = Box::new(expr);
         Expression::new_unary(UnaryOperator::Neg, expr, start, end)
@@ -444,8 +446,7 @@ TrailingExpr: Expression<'a> = {
 ConditionalExpression: Expression<'a> = {
     <trail:TrailingExpr> => trail,
     <if_:IfExpr> => Expression::IfExpression(if_),
-    // TODO add if
-    // TODO add match
+    <match_:MatchExpr> => Expression::MatchExpression(match_),
 };
 
 TryExpr: Expression<'a> = {
@@ -460,12 +461,12 @@ ExprWithoutTrailing: Expression<'a> = {
     <trye:TryExpr> => trye,
     "return" <expr:ExprWithoutTrailing> => Expression::Return(Box::new(expr)),
     "(" <expr:ExprWithoutTrailing> ")" => Expression::Parenthesized(Box::new(expr)),
-    <lambda:Closure> => lambda,
 };
 
 Expr: Expression<'a> = {
     <expr:ExprWithoutTrailing> => expr,
     <trail:Trailing> => trail,
+    <lambda:Closure> => lambda,
 };
 
 IfExpr: IfExpression<'a> = {
@@ -485,6 +486,43 @@ IfExpr: IfExpression<'a> = {
     },
 };
 
+MatchExpr: MatchExpression<'a> = {
+    <start: @L> "match" <expr:ExprWithoutTrailing> "{" Lb? <cases:(<MatchCase> Lb?)*> "}" <end: @R> => {
+        MatchExpression::new(Box::new(expr), cases, start, end)
+    },
+};
+
+MatchCase: MatchArm<'a> = {
+    <start: @L> <pat:Pattern> "->" <expr:ExprWithoutTrailing> "," <end: @R> => MatchArm::new(pat, Either::Left(expr), start, end),
+    <start: @L> <pat:Pattern> "->" <body:Block> <end: @R> => MatchArm::new(pat, Either::Right(body), start, end),
+};
+
+Pattern: Pattern<'a> = {
+    <id:Identifier> => Pattern::Variable(id),
+    <lit:Literal> => Pattern::Literal(lit),
+    "(" <pat:Pattern> <pats:("," <Pattern>)+> ")" => {
+        let mut v = vec![pat];
+        for p in pats.into_iter() {
+            v.push(p);
+        }
+        Pattern::Tuple(v)
+    },
+    <path:Path> <body:Constructor> => Pattern::Constructor { name: path, fields: body },
+};
+
+Constructor : Vec<Pattern<'a>> = {
+    "(" <pat:Pattern> <pats:("," <Pattern>)*> ")" => {
+        let mut v = vec![pat];
+        for p in pats.into_iter() {
+            v.push(p);
+        }
+        v
+    },
+    ("(" ")") => Vec::new(),
+};
+
+
+
 Literal: Literal<'a> = {
     <int:Int_lit> => Literal::Int(int),
     <float:Float_lit> => Literal::Float(float),
@@ -493,6 +531,9 @@ Literal: Literal<'a> = {
     "True" => Literal::Bool(true),
     "False" => Literal::Bool(false),
     "(" ")" => Literal::Unit,
+};
+
+Tuple: Literal<'a> = {
     "(" <expr:Expr> <exprs:("," <Expr>)+> ")" => {
         let mut v = vec![expr];
         for e in exprs.into_iter() {

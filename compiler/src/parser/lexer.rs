@@ -19,6 +19,7 @@ pub enum Token<'a> {
     // Control Flow
     If,
     Else,
+    Match,
     Fun,
     Return,
     Break,
@@ -106,6 +107,7 @@ impl std::fmt::Display for Token<'_> {
             // Keywords
             Token::If => write!(f, "if"),
             Token::Else => write!(f, "else"),
+            Token::Match => write!(f, "match"),
             Token::Fun => write!(f, "fun"),
             Token::Return => write!(f, "return"),
             Token::Break => write!(f, "break"),
@@ -422,6 +424,7 @@ impl<'a> TokenLexer<'a> {
                 match ident {
                     "if" => Ok(SpannedToken::new(Token::If, start, end)),
                     "else" => Ok(SpannedToken::new(Token::Else, start, end)),
+                    "match" => Ok(SpannedToken::new(Token::Match, start, end)),
                     "fn" => Ok(SpannedToken::new(Token::Fun, start, end)),
                     "return" => Ok(SpannedToken::new(Token::Return, start, end)),
                     "break" => Ok(SpannedToken::new(Token::Break, start, end)),
@@ -644,11 +647,12 @@ mod tests {
 
     #[test]
     fn test_keywords() {
-        let input = "if else fn return break continue struct enum let mut const import module pub extern i8 i16 i32 i64 int nat f32 f64 char bool True False where";
+        let input = "if else match fn return break continue struct enum let mut const import module pub extern i8 i16 i32 i64 int nat f32 f64 char bool True False where";
         let mut lexer = TokenLexer::new(input);
         let expected = vec![
             Token::If,
             Token::Else,
+            Token::Match,
             Token::Fun,
             Token::Return,
             Token::Break,
