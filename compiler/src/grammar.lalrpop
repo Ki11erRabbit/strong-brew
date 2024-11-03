@@ -597,8 +597,8 @@ TryExpr: Expression<'a> = {
 
 ExprWithoutTrailing: Expression<'a> = {
     <trye:TryExpr> => trye,
-    "return" <expr:ExprWithoutTrailing> => Expression::Return(Box::new(expr)),
-    "(" <expr:ExprWithoutTrailing> ")" => Expression::Parenthesized(Box::new(expr)),
+    "return" <expr:ExprType> => Expression::Return(Box::new(expr)),
+    "(" <expr:ExprType> ")" => Expression::Parenthesized(Box::new(expr)),
 };
 
 Expr: Expression<'a> = {
