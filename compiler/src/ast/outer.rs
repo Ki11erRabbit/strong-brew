@@ -369,7 +369,7 @@ impl ExpressionType<'_> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Expression<'a> {
-    Type(TypeExpression<'a>),
+    Type(BuiltinType),
     Variable(PathName<'a>),
     Literal(Literal<'a>),
     Call(Call<'a>),
@@ -396,6 +396,12 @@ pub enum Expression<'a> {
         operator: BinaryOperator,
         left: Box<Expression<'a>>,
         right: Box<Expression<'a>>,
+        start: usize,
+        end: usize,
+    },
+    Bracketed {
+        name: Box<Expression<'a>>,
+        expressions: Vec<Expression<'a>>,
         start: usize,
         end: usize,
     },
@@ -429,6 +435,10 @@ impl Expression<'_> {
     ) -> Expression<'a> {
         Expression::MemberAccess { object, field, start, end }
     }
+
+    pub fn new_bracketed<'a>(name: Box<Expression<'a>>, expressions: Vec<Expression<'a>>, start: usize, end: usize) -> Expression<'a> {
+        Expression::Bracketed { name, expressions, start, end }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -453,7 +463,6 @@ pub enum BinaryOperator {
     Le,
     Gt,
     Ge,
-    Index,
     Concat,
 }
 
@@ -595,16 +604,5 @@ pub enum Visibility {
     Private,
 }
 
-
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum TypeExpression<'a> {
-    Builtin(BuiltinType),
-    Generic {
-        name: Box<Expression<'a>>,
-        params: Vec<Expression<'a>>,
-        start: usize,
-        end: usize,
-    },
-}
 
 
