@@ -1,3 +1,5 @@
+use either::Either;
+
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct File<'a> {
@@ -522,10 +524,22 @@ impl Closure<'_> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct IfExpression<'a> {
     pub condition: Box<Expression<'a>>,
-    pub then_branch: Box<Expression<'a>>,
-    pub else_branch: Option<Box<Expression<'a>>>,
+    pub then_branch: Vec<Statement<'a>>,
+    pub else_branch: Option<Either<Box<IfExpression<'a>>, Vec<Statement<'a>>>>,
     pub start: usize,
     pub end: usize,
+}
+
+impl IfExpression<'_> {
+    pub fn new<'a>(
+        condition: Box<Expression<'a>>,
+        then_branch: Vec<Statement<'a>>,
+        else_branch: Option<Either<Box<IfExpression<'a>>, Vec<Statement<'a>>>>,
+        start: usize,
+        end: usize,
+    ) -> IfExpression<'a> {
+        IfExpression { condition, then_branch, else_branch, start, end }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]

@@ -1,5 +1,6 @@
 use crate::parser::lexer::{Token, TokenLexer, SpannedLexerError};
 use crate::ast::outer::*;
+use either::Either;
 
 grammar<'a>(input: &'a str);
 
@@ -437,11 +438,11 @@ CallExpr: Expression<'a> = {
 
 TrailingExpr: Expression<'a> = {
     <call:CallExpr> => call,
-    <trail:Trailing> => trail,
 };
 
 ConditionalExpression: Expression<'a> = {
     <trail:TrailingExpr> => trail,
+    <if_:IfExpr> => Expression::IfExpression(if_),
     // TODO add if
     // TODO add match
 };
@@ -454,13 +455,34 @@ TryExpr: Expression<'a> = {
     <expr:ConditionalExpression> => expr,
 };
 
-Expr: Expression<'a> = {
+ExprWithoutTrailing: Expression<'a> = {
     <trye:TryExpr> => trye,
-    "return" <expr:TryExpr> => Expression::Return(Box::new(expr)),
-    "(" <expr:TryExpr> ")" => Expression::Parenthesized(Box::new(expr)),
+    "return" <expr:ExprWithoutTrailing> => Expression::Return(Box::new(expr)),
+    "(" <expr:ExprWithoutTrailing> ")" => Expression::Parenthesized(Box::new(expr)),
     <lambda:Closure> => lambda,
 };
 
+Expr: Expression<'a> = {
+    <expr:ExprWithoutTrailing> => expr,
+    <trail:Trailing> => trail,
+};
+
+IfExpr: IfExpression<'a> = {
+    <start: @L> "if" <cond:ExprWithoutTrailing> <then:Block> <end: @R> => {
+        let cond = Box::new(cond);
+        IfExpression::new(cond, then, None, start, end)
+    },
+    <start: @L> "if" <cond:ExprWithoutTrailing> <then:Block> <else_:("else" <Block>)> <end: @R> => {
+        let cond = Box::new(cond);
+        let else_ = Either::Right(else_);
+        IfExpression::new(cond, then, Some(else_), start, end)
+    },
+    <start: @L> "if" <cond:ExprWithoutTrailing> <then:Block> <else_:("else" <IfExpr>)> <end: @R> => {
+        let cond = Box::new(cond);
+        let else_ = Either::Left(Box::new(else_));
+        IfExpression::new(cond, then, Some(else_), start, end)
+    },
+};
 
 Literal: Literal<'a> = {
     <int:Int_lit> => Literal::Int(int),
