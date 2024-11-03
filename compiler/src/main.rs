@@ -5,7 +5,7 @@ pub mod ast;
 fn main() {
     let input = r#"module test;
 import std::io;
-pub fn print() {
+pub fn print() = {
     let x: i64 = j;
     return x;
     if x == 0 {
@@ -13,12 +13,12 @@ pub fn print() {
     }
     x.print
     x.print()
-    x.map |x: i64| -> () {
+    x.map |x: i64| -> () = {
         x.print()
-    }
+    };
 
 }
 "#;
     let file = parser::parse("test.txt", input).unwrap();
-    println!("{:?}", file);
+    println!("{:#?}", file);
 }

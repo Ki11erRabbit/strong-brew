@@ -280,35 +280,35 @@ pub enum Statement<'a> {
     Let {
         name: &'a str,
         ty: ExpressionType<'a>,
-        value: Expression<'a>,
+        value: ExpressionType<'a>,
         start: usize,
         end: usize,
     },
     Const {
         name: &'a str,
         ty: ExpressionType<'a>,
-        value: Expression<'a>,
+        value: ExpressionType<'a>,
         start: usize,
         end: usize,
     },
     Assignment {
-        target: Expression<'a>,
-        value: Expression<'a>,
+        target: ExpressionType<'a>,
+        value: ExpressionType<'a>,
         start: usize,
         end: usize,
     },
 }
 
 impl Statement<'_> {
-    pub fn new_let<'a>(name: &'a str, ty: ExpressionType<'a>, value: Expression<'a>, start: usize, end: usize) -> Statement<'a> {
+    pub fn new_let<'a>(name: &'a str, ty: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
         Statement::Let { name, ty, value, start, end }
     }
 
-    pub fn new_const<'a>(name: &'a str, ty: ExpressionType<'a>, value: Expression<'a>, start: usize, end: usize) -> Statement<'a> {
+    pub fn new_const<'a>(name: &'a str, ty: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
         Statement::Const { name, ty, value, start, end }
     }
 
-    pub fn new_assignment<'a>(target: Expression<'a>, value: Expression<'a>, start: usize, end: usize) -> Statement<'a> {
+    pub fn new_assignment<'a>(target: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
         Statement::Assignment { target, value, start, end }
     }
 }

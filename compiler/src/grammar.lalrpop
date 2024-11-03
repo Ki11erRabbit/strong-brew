@@ -267,16 +267,16 @@ Block: Vec<Statement<'a>> = {
 };
 
 Statement: Statement<'a> = {
-    <start: @L> "let" <id:Identifier> ":" <ty:ExpressionType> "=" <rhs:Expr> <end: @R> => {
+    <start: @L> "let" <id:Identifier> ":" <ty:ExpressionType> "=" <rhs:ExpressionType> <end: @R> => {
         Statement::new_let(id, ty, rhs, start, end)
     },
-    <start: @L> "const" <id:Identifier> ":" <ty:ExpressionType> "=" <rhs:Expr> <end: @R> => {
+    <start: @L> "const" <id:Identifier> ":" <ty:ExpressionType> "=" <rhs:ExpressionType> <end: @R> => {
         Statement::new_const(id, ty, rhs, start, end)
     },
-    <start: @L> <lhs:Expr> "=" <rhs:Expr> <end: @R> => {
+    <start: @L> <lhs:ExpressionTypeTrailing> "=" <rhs:ExpressionTypeTrailing> <end: @R> => {
         Statement::new_assignment(lhs, rhs, start, end)
     },
-    <start: @L> <expr:ExpressionType> <end: @R> => {
+    <start: @L> <expr:ExpressionTypeTrailing> <end: @R> => {
 
         Statement::Expression(expr)
     },
@@ -286,6 +286,11 @@ Statement: Statement<'a> = {
 ExpressionType: ExpressionType<'a> = {
     <start: @L> <expr:ExprType> <end: @R> => ExpressionType::new(false, expr),
     <start: @L> "mut" <expr:ExprType> <end: @R> => ExpressionType::new(true, expr),
+};
+
+ExpressionTypeTrailing: ExpressionType<'a> = {
+    <start: @L> <expr:ExprTypeTrailing> <end: @R> => ExpressionType::new(false, expr),
+    <start: @L> "mut" <expr:ExprTypeTrailing> <end: @R> => ExpressionType::new(true, expr),
 };
 
 TermExpr: Expression<'a> = {
@@ -441,13 +446,11 @@ ExprWithoutTrailing: Expression<'a> = {
 Expr: Expression<'a> = {
     <expr:ExprWithoutTrailing> => expr,
     <lambda:Closure> => lambda,
-    <trail:Trailing> => trail,
 };
 
 
 ExprType: Expression<'a> = {
-    <expr:ExprWithoutTrailing> => expr,
-    <lambda:Closure> => lambda,
+    <expr:Expr> => expr,
     "i8" => Expression::Type(BuiltinType::I8),
     "i16" => Expression::Type(BuiltinType::I16),
     "i32" => Expression::Type(BuiltinType::I32),
@@ -459,6 +462,23 @@ ExprType: Expression<'a> = {
     "char" => Expression::Type(BuiltinType::Char),
     "bool" => Expression::Type(BuiltinType::Bool),
 };
+
+ExprTypeTrailing: Expression<'a> = {
+    <expr:Expr> => expr,
+    <trail:Trailing> => trail,
+    "i8" => Expression::Type(BuiltinType::I8),
+    "i16" => Expression::Type(BuiltinType::I16),
+    "i32" => Expression::Type(BuiltinType::I32),
+    "i64" => Expression::Type(BuiltinType::I64),
+    "int" => Expression::Type(BuiltinType::Int),
+    "nat" => Expression::Type(BuiltinType::Nat),
+    "f32" => Expression::Type(BuiltinType::F32),
+    "f64" => Expression::Type(BuiltinType::F64),
+    "char" => Expression::Type(BuiltinType::Char),
+    "bool" => Expression::Type(BuiltinType::Bool),
+};
+
+
 
 IfExpr: IfExpression<'a> = {
     <start: @L> "if" <cond:ExprWithoutTrailing> <then:Block> <end: @R> => {
@@ -536,7 +556,6 @@ Closure: Expression<'a> = {
     <start: @L> <params:ClosureParamList> <ret:ReturnType> "=" <body:Block> <end: @R> => Closure::new(params, Some(ret), body, start, end),
     <start: @L> <body:Block> <end: @R> => Closure::new(Vec::new(), None, body, start, end),
     //<start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Expr> <end: @R> => Closure::new(params, ret, vec![Statement::Expression(body)], start, end),
-    // TODO: add closure without paramlist and without return types
 
 };
 
@@ -562,7 +581,7 @@ Call: Call<'a> = {
 };
 
 Trailing: Expression<'a> = {
-    <start: @L> <call:CallExpr> <lambdas:Closure+> <end: @R> => {
+    <start: @L> <call:ExprWithoutTrailing> <lambdas:Closure+> <end: @R> => {
         Expression::TrailingLambdas(Box::new(call), lambdas, start, end)
     },
 };
