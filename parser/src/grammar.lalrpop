@@ -323,7 +323,7 @@ pub Param: Param<'a> = {
 };
 
 pub ReturnType: Box<ExpressionType<'a>> = {
-    <ty:("->" <ExpressionType>)?> => {
+    <ty:("->" <ExpressionTypeNoCall>)?> => {
         match ty {
             Some(t) => Box::new(t),
             None => Box::new(ExpressionType::new(false, Expression::Literal(Literal::Unit))),
@@ -430,7 +430,7 @@ Block: Vec<Statement<'a>> = {
 };
 
 Statement: Statement<'a> = {
-    <start: @L> "let" <id:Identifier> ":" <ty:ExpressionType> Assign <rhs:ExpressionType> <end: @R> => {
+    <start: @L> "let" <id:Pattern> ":" <ty:ExpressionType> Assign <rhs:ExpressionType> <end: @R> => {
         Statement::new_let(id, ty, rhs, start, end)
     },
     <start: @L> "const" <id:Identifier> ":" <ty:ExpressionType> Assign <rhs:ExpressionType> <end: @R> => {
@@ -447,14 +447,20 @@ Statement: Statement<'a> = {
 
 
 ExpressionType: ExpressionType<'a> = {
-    <start: @L> <expr:ExprType> <end: @R> => ExpressionType::new(false, expr),
-    <start: @L> "mut" <expr:ExprType> <end: @R> => ExpressionType::new(true, expr),
+    <start: @L> <expr:Expr> <end: @R> => ExpressionType::new(false, expr),
+    <start: @L> "mut" <expr:Expr> <end: @R> => ExpressionType::new(true, expr),
 };
 
 ExpressionTypeTrailing: ExpressionType<'a> = {
-    <start: @L> <expr:ExprTypeTrailing> <end: @R> => ExpressionType::new(false, expr),
-    <start: @L> "mut" <expr:ExprTypeTrailing> <end: @R> => ExpressionType::new(true, expr),
+    <start: @L> <expr:ExprTrailing> <end: @R> => ExpressionType::new(false, expr),
+    <start: @L> "mut" <expr:ExprTrailing> <end: @R> => ExpressionType::new(true, expr),
 };
+
+ExpressionTypeNoCall: ExpressionType<'a> = {
+    <start: @L> <expr:ExprWithoutTrailingNoCall> <end: @R> => ExpressionType::new(false, expr),
+    <start: @L> "mut" <expr:ExprWithoutTrailingNoCall> <end: @R> => ExpressionType::new(true, expr),
+};
+
 
 TermExpr: Expression<'a> = {
     <p:Path> <id:Identifier> <name_end: @L> => {
@@ -481,7 +487,21 @@ TermExpr: Expression<'a> = {
     "char" => Expression::Type(BuiltinType::Char),
     "bool" => Expression::Type(BuiltinType::Bool),
     "never" => Expression::Type(BuiltinType::Never),
+    <f:FunctionType> => Expression::Type(f),
 }
+
+
+FunctionType: BuiltinType<'a> = {
+    "fn" <rty:ExpressionTypeNoCall> "(" ")" => BuiltinType::Function {
+    params: Vec::new(), return_type: Box::new(rty) },
+    "fn" <rty:ExpressionTypeNoCall> "(" <param:ExpressionType> <params:("," <ExpressionType>)*> ")" => {
+        let mut v = vec![param];
+        for p in params.into_iter() {
+            v.push(p);
+        }
+        BuiltinType::Function { params: v, return_type: Box::new(rty) }
+    },
+};
 
 
 IndexExpr: Expression<'a> = {
@@ -607,28 +627,40 @@ CallExpr: Expression<'a> = {
     <call:Call> => Expression::Call(call),
 };
 
-TrailingExpr: Expression<'a> = {
-    <call:CallExpr> => call,
-};
-
-ConditionalExpression: Expression<'a> = {
-    <trail:TrailingExpr> => trail,
+ConditionalExpr: Expression<'a> = {
+    <trail:CallExpr> => trail,
     <if_:IfExpr> => Expression::IfExpression(if_),
     <match_:MatchExpr> => Expression::MatchExpression(match_),
 };
 
+ConditionalExprNoCall: Expression<'a> = {
+    <dis:DisjExpr> => dis,
+    <if_:IfExpr> => Expression::IfExpression(if_),
+    <match_:MatchExpr> => Expression::MatchExpression(match_),
+};
+
+
 TryExpr: Expression<'a> = {
-    <start: @L> <expr:ConditionalExpression> "?" <end: @R> => {
+    <start: @L> <expr:ConditionalExpr> "?" <end: @R> => {
         let expr = Box::new(expr);
         Expression::new_unary(UnaryOperator::Try, expr, start, end)
     },
-    <expr:ConditionalExpression> => expr,
+    <expr:ConditionalExpr> => expr,
+};
+
+TryExprNoCall: Expression<'a> = {
+    <expr:ConditionalExprNoCall> => expr,
+};
+
+ExprWithoutTrailingNoCall: Expression<'a> = {
+    <trye:TryExprNoCall> => trye,
+    "(" <expr:Expr> ")" => Expression::Parenthesized(Box::new(expr)),
 };
 
 ExprWithoutTrailing: Expression<'a> = {
     <trye:TryExpr> => trye,
-    "return" <expr:ExprType> => Expression::Return(Box::new(expr)),
-    "(" <expr:ExprType> ")" => Expression::Parenthesized(Box::new(expr)),
+    "return" <expr:Expr> => Expression::Return(Box::new(expr)),
+    "(" <expr:Expr> ")" => Expression::Parenthesized(Box::new(expr)),
 };
 
 Expr: Expression<'a> = {
@@ -636,12 +668,12 @@ Expr: Expression<'a> = {
     <lambda:Closure> => lambda,
 };
 
-
-ExprType: Expression<'a> = {
-    <expr:Expr> => expr,
+ExprNoCall: Expression<'a> = {
+    <expr:ExprWithoutTrailingNoCall> => expr,
+    <lambda:Closure> => lambda,
 };
 
-ExprTypeTrailing: Expression<'a> = {
+ExprTrailing: Expression<'a> = {
     <expr:Expr> => expr,
     <trail:Trailing> => trail,
 };
@@ -713,6 +745,14 @@ Literal: Literal<'a> = {
     "True" => Literal::Bool(true),
     "False" => Literal::Bool(false),
     "(" ")" => Literal::Unit,
+    "[" "]" => Literal::List(Vec::new()),
+    "[" <expr:Expr> <exprs:("," <Expr>)*> "]" => {
+        let mut v = vec![expr];
+        for e in exprs.into_iter() {
+            v.push(e);
+        }
+        Literal::List(v)
+    },
 };
 
 Tuple: Literal<'a> = {

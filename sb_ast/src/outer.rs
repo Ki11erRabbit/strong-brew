@@ -258,7 +258,7 @@ impl Param<'_> {
 
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum BuiltinType {
+pub enum BuiltinType<'a> {
     I8,
     I16,
     I32,
@@ -271,6 +271,10 @@ pub enum BuiltinType {
     Char,
     Unit,
     Never,
+    Function {
+        params: Vec<ExpressionType<'a>>,
+        return_type: Box<ExpressionType<'a>>,
+    },
 }
 
 
@@ -278,7 +282,7 @@ pub enum BuiltinType {
 pub enum Statement<'a> {
     Expression(ExpressionType<'a>),
     Let {
-        name: &'a str,
+        name: Pattern<'a>,
         ty: ExpressionType<'a>,
         value: ExpressionType<'a>,
         start: usize,
@@ -300,7 +304,7 @@ pub enum Statement<'a> {
 }
 
 impl Statement<'_> {
-    pub fn new_let<'a>(name: &'a str, ty: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
+    pub fn new_let<'a>(name: Pattern<'a>, ty: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
         Statement::Let { name, ty, value, start, end }
     }
 
@@ -327,7 +331,7 @@ impl ExpressionType<'_> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Expression<'a> {
-    Type(BuiltinType),
+    Type(BuiltinType<'a>),
     Variable(PathName<'a>),
     Literal(Literal<'a>),
     Call(Call<'a>),
@@ -433,6 +437,7 @@ pub enum Literal<'a> {
     Bool(bool),
     Unit,
     Tuple(Vec<Expression<'a>>),
+    List(Vec<Expression<'a>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]

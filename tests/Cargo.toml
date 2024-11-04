@@ -8,7 +8,7 @@ publish = false
 [dev-dependencies]
 parser = { workspace = true }
 sb_ast = { workspace = true }
-
+either = "1.13.0"
 
 [[test]]
 name = "parser_test"
