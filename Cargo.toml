@@ -1,5 +1,10 @@
 [workspace]
+resolver = "2"
 
 
+members = ["parser", "sb_ast", "tests"]
 
-members = ["compiler"]
+
+[workspace.dependencies]
+parser = { path = "parser" }
+sb_ast = { path = "sb_ast" }

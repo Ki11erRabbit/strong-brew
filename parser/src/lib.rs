@@ -1,11 +1,13 @@
+mod lexer;
+
+
+
 use ariadne::{ColorGenerator, Label, ReportKind, Source};
 use lalrpop_util::{lalrpop_mod, ParseError};
 
-use crate::ast::outer;
+use sb_ast::outer;
 
-use self::lexer::{LexerError, SpannedLexerError};
-
-mod lexer;
+use crate::lexer::{LexerError, SpannedLexerError};
 
 
 lalrpop_mod!(grammar);
@@ -17,7 +19,7 @@ pub fn parse<'a>(name: &str, input: &'a str) -> Result<outer::File<'a>, ()> {
         Err(e) => {
             match e {
                 ParseError::User { error } => {
-                    let SpannedLexerError { error, start, end } = error;
+                    let SpannedLexerError { error, .. } = error;
                     match error {
                         LexerError::ErrorCollection(errors) => {
                             for error in errors {

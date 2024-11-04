@@ -1,5 +1,5 @@
-use crate::parser::lexer::{Token, TokenLexer, SpannedLexerError, LexerError};
-use crate::ast::outer::*;
+use crate::lexer::{Token, TokenLexer, SpannedLexerError, LexerError};
+use sb_ast::outer::*;
 use either::Either;
 use lalrpop_util::ParseError;
 
@@ -37,6 +37,7 @@ extern {
         "f64" => Token::F64,
         "char" => Token::Char,
         "bool" => Token::Bool,
+        "never" => Token::Never,
         "True" => Token::True,
         "False" => Token::False,
         Int_lit => Token::IntLiteral(<&'a str>),
@@ -451,6 +452,17 @@ TermExpr: Expression<'a> = {
         Expression::new_unary(UnaryOperator::Neg, expr, start, end)
     },
     // TODO: break, continue
+    "i8" => Expression::Type(BuiltinType::I8),
+    "i16" => Expression::Type(BuiltinType::I16),
+    "i32" => Expression::Type(BuiltinType::I32),
+    "i64" => Expression::Type(BuiltinType::I64),
+    "int" => Expression::Type(BuiltinType::Int),
+    "nat" => Expression::Type(BuiltinType::Nat),
+    "f32" => Expression::Type(BuiltinType::F32),
+    "f64" => Expression::Type(BuiltinType::F64),
+    "char" => Expression::Type(BuiltinType::Char),
+    "bool" => Expression::Type(BuiltinType::Bool),
+    "never" => Expression::Type(BuiltinType::Never),
 }
 
 
@@ -609,31 +621,11 @@ Expr: Expression<'a> = {
 
 ExprType: Expression<'a> = {
     <expr:Expr> => expr,
-    "i8" => Expression::Type(BuiltinType::I8),
-    "i16" => Expression::Type(BuiltinType::I16),
-    "i32" => Expression::Type(BuiltinType::I32),
-    "i64" => Expression::Type(BuiltinType::I64),
-    "int" => Expression::Type(BuiltinType::Int),
-    "nat" => Expression::Type(BuiltinType::Nat),
-    "f32" => Expression::Type(BuiltinType::F32),
-    "f64" => Expression::Type(BuiltinType::F64),
-    "char" => Expression::Type(BuiltinType::Char),
-    "bool" => Expression::Type(BuiltinType::Bool),
 };
 
 ExprTypeTrailing: Expression<'a> = {
     <expr:Expr> => expr,
     <trail:Trailing> => trail,
-    "i8" => Expression::Type(BuiltinType::I8),
-    "i16" => Expression::Type(BuiltinType::I16),
-    "i32" => Expression::Type(BuiltinType::I32),
-    "i64" => Expression::Type(BuiltinType::I64),
-    "int" => Expression::Type(BuiltinType::Int),
-    "nat" => Expression::Type(BuiltinType::Nat),
-    "f32" => Expression::Type(BuiltinType::F32),
-    "f64" => Expression::Type(BuiltinType::F64),
-    "char" => Expression::Type(BuiltinType::Char),
-    "bool" => Expression::Type(BuiltinType::Bool),
 };
 
 
