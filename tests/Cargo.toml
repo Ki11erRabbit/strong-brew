@@ -7,6 +7,7 @@ publish = false
 
 [dev-dependencies]
 parser = { workspace = true }
+sb_ast = { workspace = true }
 
 
 [[test]]
