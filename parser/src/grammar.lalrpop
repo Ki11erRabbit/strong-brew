@@ -295,6 +295,7 @@ OperatorFunction: TopLevelStatement<'a> = {
         match id {
             "get" => name.segments.push("get[]"),
             "set" => name.segments.push("set[]"),
+            "create" => name.segments.push("create[]"),
             _ => return Err(ParseError::User {
                 error: SpannedLexerError::new(LexerError::InvalidOperator, start, end),
             }),
@@ -326,7 +327,7 @@ pub ReturnType: Box<ExpressionType<'a>> = {
     <ty:("->" <ExpressionTypeNoCall>)?> => {
         match ty {
             Some(t) => Box::new(t),
-            None => Box::new(ExpressionType::new(false, Expression::Literal(Literal::Unit))),
+            None => Box::new(ExpressionType::new(false, Expression::Literal(Literal::Unit), false)),
         }
     },
 };
@@ -364,14 +365,14 @@ pub Struct: TopLevelStatement<'a> = {
 };
 
 pub StructFields: Vec<Field<'a>> = {
-    "{" <field:Field> <fields:(Lb? "," <Field>)*> "}" => {
+    "{" Lb? <field:Field> <fields:(Lb? "," Lb? <Field>)*> ","? Lb? "}" => {
         let mut v = vec![field];
         for f in fields.into_iter() {
             v.push(f);
         }
         v
     },
-    "{" "}" => Vec::new(),
+    "{" Lb? "}" => Vec::new(),
 };
 
 pub Field: Field<'a> = {
@@ -383,14 +384,14 @@ pub Enum: TopLevelStatement<'a> = {
 };
 
 pub EnumVariants: Vec<Variant<'a>> = {
-    "{" <variant:EnumVariant> <variants:(Lb? "," <EnumVariant>)*> "}" => {
+    "{" Lb? <variant:EnumVariant> <variants:(Lb? "," Lb? <EnumVariant>)*> ","? Lb? "}" => {
         let mut v = vec![variant];
         for f in variants.into_iter() {
             v.push(f);
         }
         v
     },
-    "{" "}" => Vec::new(),
+    "{" Lb? "}" => Vec::new(),
 };
 
 pub EnumVariant: Variant<'a> = {
@@ -447,18 +448,24 @@ Statement: Statement<'a> = {
 
 
 ExpressionType: ExpressionType<'a> = {
-    <start: @L> <expr:Expr> <end: @R> => ExpressionType::new(false, expr),
-    <start: @L> "mut" <expr:Expr> <end: @R> => ExpressionType::new(true, expr),
+    <start: @L> <expr:Expr> <end: @R> => ExpressionType::new(false, expr, false),
+    <start: @L> "mut" <expr:Expr> <end: @R> => ExpressionType::new(true, expr, false),
+    <start: @L> "." "." "." <expr:Expr> <end: @R> => ExpressionType::new(false, expr, true),
+    <start: @L> "." "." "." "mut" <expr:Expr> <end: @R> => ExpressionType::new(true, expr, true),
 };
 
 ExpressionTypeTrailing: ExpressionType<'a> = {
-    <start: @L> <expr:ExprTrailing> <end: @R> => ExpressionType::new(false, expr),
-    <start: @L> "mut" <expr:ExprTrailing> <end: @R> => ExpressionType::new(true, expr),
+    <start: @L> <expr:ExprTrailing> <end: @R> => ExpressionType::new(false, expr, false),
+    <start: @L> "mut" <expr:ExprTrailing> <end: @R> => ExpressionType::new(true, expr, false),
+    <start: @L> "." "." "." <expr:ExprTrailing> <end: @R> => ExpressionType::new(false, expr, true),
+    <start: @L> "." "." "." "mut" <expr:ExprTrailing> <end: @R> => ExpressionType::new(true, expr, true),
 };
 
 ExpressionTypeNoCall: ExpressionType<'a> = {
-    <start: @L> <expr:ExprWithoutTrailingNoCall> <end: @R> => ExpressionType::new(false, expr),
-    <start: @L> "mut" <expr:ExprWithoutTrailingNoCall> <end: @R> => ExpressionType::new(true, expr),
+    <start: @L> <expr:ExprWithoutTrailingNoCall> <end: @R> => ExpressionType::new(false, expr, false),
+    <start: @L> "mut" <expr:ExprWithoutTrailingNoCall> <end: @R> => ExpressionType::new(true, expr, false),
+    <start: @L> "." "." "." <expr:ExprWithoutTrailingNoCall> <end: @R> => ExpressionType::new(false, expr, true),
+    <start: @L> "." "." "." "mut" <expr:ExprWithoutTrailingNoCall> <end: @R> => ExpressionType::new(true, expr, true),
 };
 
 
@@ -704,7 +711,7 @@ MatchExpr: MatchExpression<'a> = {
 };
 
 MatchCase: MatchArm<'a> = {
-    <start: @L> <pat:Pattern> "->" <expr:ExprWithoutTrailing> "," <end: @R> => MatchArm::new(pat, Either::Left(expr), start, end),
+    <start: @L> <pat:Pattern> "->" <expr:ExpressionType> "," <end: @R> => MatchArm::new(pat, Either::Left(expr), start, end),
     <start: @L> <pat:Pattern> "->" <body:Block> <end: @R> => MatchArm::new(pat, Either::Right(body), start, end),
 };
 
@@ -756,7 +763,7 @@ Literal: Literal<'a> = {
 };
 
 Tuple: Literal<'a> = {
-    "(" <expr:Expr> <exprs:("," <Expr>)+> ")" => {
+    "(" <expr:ExpressionType> <exprs:("," <ExpressionType>)+> ")" => {
         let mut v = vec![expr];
         for e in exprs.into_iter() {
             v.push(e);

@@ -321,11 +321,12 @@ impl Statement<'_> {
 pub struct ExpressionType<'a> {
     pub mutable: bool,
     pub expression: Expression<'a>,
+    pub variadic: bool,
 }
 
 impl ExpressionType<'_> {
-    pub fn new<'a>(mutable: bool, expression: Expression<'a>) -> ExpressionType<'a> {
-        ExpressionType { mutable, expression }
+    pub fn new<'a>(mutable: bool, expression: Expression<'a>, variadic: bool) -> ExpressionType<'a> {
+        ExpressionType { mutable, expression, variadic }
     }
 }
 
@@ -436,17 +437,17 @@ pub enum Literal<'a> {
     String(&'a str),
     Bool(bool),
     Unit,
-    Tuple(Vec<Expression<'a>>),
+    Tuple(Vec<ExpressionType<'a>>),
     List(Vec<Expression<'a>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Call<'a> {
-    name: Box<Expression<'a>>,
-    type_args: Vec<ExpressionType<'a>>,
-    args: Vec<CallArg<'a>>,
-    start: usize,
-    end: usize,
+    pub name: Box<Expression<'a>>,
+    pub type_args: Vec<ExpressionType<'a>>,
+    pub args: Vec<CallArg<'a>>,
+    pub start: usize,
+    pub end: usize,
 }
 
 impl Call<'_> {
@@ -539,13 +540,13 @@ impl MatchExpression<'_> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct MatchArm<'a> {
     pub pattern: Pattern<'a>,
-    pub value: Either<Expression<'a>, Vec<Statement<'a>>>,
+    pub value: Either<ExpressionType<'a>, Vec<Statement<'a>>>,
     pub start: usize,
     pub end: usize,
 }
 
 impl MatchArm<'_> {
-    pub fn new<'a>(pattern: Pattern<'a>, value: Either<Expression<'a>, Vec<Statement<'a>>>, start: usize, end: usize) -> MatchArm<'a> {
+    pub fn new<'a>(pattern: Pattern<'a>, value: Either<ExpressionType<'a>, Vec<Statement<'a>>>, start: usize, end: usize) -> MatchArm<'a> {
         MatchArm { pattern, value, start, end }
     }
 }
