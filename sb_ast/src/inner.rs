@@ -1,7 +1,6 @@
 use either::Either;
 
-
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct File<'a> {
     pub path: PathName<'a>,
     pub content: Vec<TopLevelStatement<'a>>,
@@ -9,11 +8,14 @@ pub struct File<'a> {
 
 impl File<'_> {
     pub fn new<'a>(path: PathName<'a>, content: Vec<TopLevelStatement<'a>>) -> File<'a> {
-        File { path, content }
+        File {
+            path,
+            content,
+        }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct PathName<'a> {
     pub segments: Vec<&'a str>,
     pub start: usize,
@@ -21,12 +23,16 @@ pub struct PathName<'a> {
 }
 
 impl PathName<'_> {
-    pub fn new<'a>(segments: Vec<&'a str>, start: usize, end: usize) -> PathName<'a> {
-        PathName { segments, start, end }
+    pub fn new(segments: Vec<&str>, start: usize, end: usize) -> PathName {
+        PathName {
+            segments,
+            start,
+            end,
+        }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub enum TopLevelStatement<'a> {
     Function(Function<'a>),
     Struct(Struct<'a>),
@@ -35,7 +41,13 @@ pub enum TopLevelStatement<'a> {
     Import(Import<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
+pub enum Visibility {
+    Public,
+    Private,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub enum Function<'a> {
     Regular {
         visibility: Visibility,
@@ -106,7 +118,7 @@ impl Function<'_> {
             end,
         })
     }
-} 
+}
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Struct<'a> {
@@ -208,7 +220,14 @@ pub struct Const<'a> {
 }
 
 impl Const<'_> {
-    pub fn new<'a>(visibility: Visibility, name: PathName<'a>, ty: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> TopLevelStatement<'a> {
+    pub fn new<'a>(
+        visibility: Visibility,
+        name: PathName<'a>,
+        ty: ExpressionType<'a>,
+        value: ExpressionType<'a>,
+        start: usize,
+        end: usize,
+    ) -> TopLevelStatement<'a> {
         TopLevelStatement::Const(Const { visibility, name, ty, value, start, end })
     }
 }
@@ -230,13 +249,11 @@ impl Import<'_> {
 pub struct GenericParam<'a> {
     pub name: &'a str,
     pub constraints: Vec<ExpressionType<'a>>,
-    pub start: usize,
-    pub end: usize,
 }
 
 impl GenericParam<'_> {
-    pub fn new<'a>(name: &'a str, constraints: Vec<ExpressionType<'a>>, start: usize, end: usize) -> GenericParam<'a> {
-        GenericParam { name, constraints, start, end }
+    pub fn new<'a>(name: &'a str, constraints: Vec<ExpressionType<'a>>) -> GenericParam<'a> {
+        GenericParam { name, constraints }
     }
 }
 
@@ -246,13 +263,61 @@ pub struct Param<'a> {
     pub implicit: bool,
     pub name: &'a str,
     pub ty: ExpressionType<'a>,
-    pub start: usize,
-    pub end: usize,
 }
 
 impl Param<'_> {
-    pub fn new<'a>(implicit: bool, name: &'a str, ty: ExpressionType<'a>, start: usize, end: usize) -> Param<'a> {
-        Param { implicit, name, ty, start, end }
+    pub fn new<'a>(implicit: bool, name: &'a str, ty: ExpressionType<'a>) -> Param<'a> {
+        Param { implicit, name, ty }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub enum Statement<'a> {
+    Expression(ExpressionType<'a>),
+    Let {
+        name: Pattern<'a>,
+        ty: ExpressionType<'a>,
+        value: ExpressionType<'a>,
+    },
+    Const {
+        name: &'a str,
+        ty: ExpressionType<'a>,
+        value: ExpressionType<'a>,
+    },
+    Assignment {
+        target: ExpressionType<'a>,
+        value: ExpressionType<'a>,
+    },
+}
+
+impl Statement<'_> {
+    pub fn new_let<'a>(name: Pattern<'a>, ty: ExpressionType<'a>, value: ExpressionType<'a>) -> Statement<'a> {
+        Statement::Let { name, ty, value, }
+    }
+
+    pub fn new_const<'a>(name: &'a str, ty: ExpressionType<'a>, value: ExpressionType<'a>) -> Statement<'a> {
+        Statement::Const { name, ty, value }
+    }
+
+    pub fn new_assignment<'a>(target: ExpressionType<'a>, value: ExpressionType<'a>) -> Statement<'a> {
+        Statement::Assignment { target, value }
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub enum ExpressionType<'a> {
+    Type(Type<'a>),
+    Expression(Expression<'a>),
+}
+
+impl ExpressionType<'_> {
+    pub fn new_type<'a>(ty: Type<'a>) -> ExpressionType<'a> {
+        ExpressionType::Type(ty)
+    }
+
+    pub fn new_expression<'a>(expr: Expression<'a>) -> ExpressionType<'a> {
+        ExpressionType::Expression(expr)
     }
 }
 
@@ -278,66 +343,95 @@ pub enum BuiltinType<'a> {
     },
 }
 
-
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum Statement<'a> {
-    Expression(ExpressionType<'a>),
-    Let {
-        name: Pattern<'a>,
-        ty: ExpressionType<'a>,
-        value: ExpressionType<'a>,
-        start: usize,
-        end: usize,
-    },
-    Const {
-        name: &'a str,
-        ty: ExpressionType<'a>,
-        value: ExpressionType<'a>,
-        start: usize,
-        end: usize,
-    },
-    Assignment {
-        target: ExpressionType<'a>,
-        value: ExpressionType<'a>,
-        start: usize,
-        end: usize,
-    },
-}
-
-impl Statement<'_> {
-    pub fn new_let<'a>(name: Pattern<'a>, ty: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
-        Statement::Let { name, ty, value, start, end }
-    }
-
-    pub fn new_const<'a>(name: &'a str, ty: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
-        Statement::Const { name, ty, value, start, end }
-    }
-
-    pub fn new_assignment<'a>(target: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
-        Statement::Assignment { target, value, start, end }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct ExpressionType<'a> {
+pub struct Type<'a> {
     pub mutable: bool,
-    pub expression: Expression<'a>,
+    pub ty: TypeKind<'a>,
     pub variadic: bool,
 }
 
-impl ExpressionType<'_> {
-    pub fn new<'a>(mutable: bool, expression: Expression<'a>, variadic: bool) -> ExpressionType<'a> {
-        ExpressionType { mutable, expression, variadic }
+impl Type<'_> {
+    pub fn new<'a>(mutable: bool, ty: TypeKind<'a>, variadic: bool) -> Type<'a> {
+        Type { mutable, ty, variadic }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub enum TypeKind<'a> {
+    BuiltIn(BuiltinType<'a>),
+    Variable(PathName<'a>),
+    Literal(Literal<'a>),
+    User(PathName<'a>),
+    Call(Call<'a>),
+    MemberAccess {
+        object: Box<Expression<'a>>,
+        field: &'a str,
+        start: usize,
+        end: usize,
+    },
+    Parenthesized(Box<Type<'a>>),
+    Tuple(Vec<Type<'a>>),
+    IfType(IfExpr<'a>),
+    MatchType(MatchExpr<'a>),
+    UnaryOperation {
+        operator: UnaryOperator,
+        operand: Box<ExpressionType<'a>>,
+        start: usize,
+        end: usize,
+    },
+    BinaryOperation {
+        operator: BinaryOperator,
+        left: Box<ExpressionType<'a>>,
+        right: Box<ExpressionType<'a>>,
+        start: usize,
+        end: usize,
+    },
+    Generic {
+        name: Box<Type<'a>>,
+        params: Vec<Type<'a>>,
+        start: usize,
+        end: usize,
+    },
+}
+
+impl TypeKind<'_> {
+    pub fn new_binary<'a>(
+        operator: BinaryOperator,
+        left: Box<ExpressionType<'a>>,
+        right: Box<ExpressionType<'a>>,
+        start: usize,
+        end: usize,
+    ) -> TypeKind<'a> {
+        TypeKind::BinaryOperation { operator, left, right, start, end }
+    }
+
+    pub fn new_unary<'a>(
+        operator: UnaryOperator,
+        operand: Box<ExpressionType<'a>>,
+        start: usize,
+        end: usize,
+    ) -> TypeKind<'a> {
+        TypeKind::UnaryOperation { operator, operand, start, end }
+    }
+
+    pub fn new_member_access<'a>(
+        object: Box<Expression<'a>>,
+        field: &'a str,
+        start: usize,
+        end: usize,
+    ) -> TypeKind<'a> {
+        TypeKind::MemberAccess { object, field, start, end }
+    }
+}
+
+
+
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Expression<'a> {
-    Type(BuiltinType<'a>),
     Variable(PathName<'a>),
     Literal(Literal<'a>),
     Call(Call<'a>),
-    TrailingLambdas(Box<Expression<'a>>, Vec<Expression<'a>>, usize, usize),
+    //TrailingLambdas(Box<Expression<'a>>, Vec<Expression<'a>>),
     MemberAccess {
         object: Box<Expression<'a>>,
         field: &'a str,
@@ -347,8 +441,9 @@ pub enum Expression<'a> {
     Return(Box<Expression<'a>>),
     Closure(Closure<'a>),
     Parenthesized(Box<Expression<'a>>),
-    IfExpression(IfExpression<'a>),
-    MatchExpression(MatchExpression<'a>),
+    Tuple(Vec<Expression<'a>>),
+    IfExpression(IfExpr<'a>),
+    MatchExpression(MatchExpr<'a>),
     UnaryOperation {
         operator: UnaryOperator,
         operand: Box<Expression<'a>>,
@@ -359,12 +454,6 @@ pub enum Expression<'a> {
         operator: BinaryOperator,
         left: Box<Expression<'a>>,
         right: Box<Expression<'a>>,
-        start: usize,
-        end: usize,
-    },
-    Bracketed {
-        name: Box<Expression<'a>>,
-        expressions: Vec<Expression<'a>>,
         start: usize,
         end: usize,
     },
@@ -398,10 +487,6 @@ impl Expression<'_> {
     ) -> Expression<'a> {
         Expression::MemberAccess { object, field, start, end }
     }
-
-    pub fn new_bracketed<'a>(name: Box<Expression<'a>>, expressions: Vec<Expression<'a>>, start: usize, end: usize) -> Expression<'a> {
-        Expression::Bracketed { name, expressions, start, end }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -427,6 +512,7 @@ pub enum BinaryOperator {
     Gt,
     Ge,
     Concat,
+    Index
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
@@ -437,8 +523,8 @@ pub enum Literal<'a> {
     String(&'a str),
     Bool(bool),
     Unit,
-    Tuple(Vec<ExpressionType<'a>>),
     List(Vec<Expression<'a>>),
+    Type(Box<Type<'a>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
@@ -446,6 +532,7 @@ pub struct Call<'a> {
     pub name: Box<Expression<'a>>,
     pub type_args: Vec<ExpressionType<'a>>,
     pub args: Vec<CallArg<'a>>,
+    pub lambdas: Vec<Closure<'a>>,
     pub start: usize,
     pub end: usize,
 }
@@ -455,26 +542,28 @@ impl Call<'_> {
         name: Box<Expression<'a>>,
         type_args: Vec<ExpressionType<'a>>,
         args: Vec<CallArg<'a>>,
+        lambdas: Vec<Closure<'a>>,
         start: usize,
         end: usize,
     ) -> Call<'a> {
-        Call { name, type_args, args, start, end }
+        Call { name, type_args, args, lambdas, start, end }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct CallArg<'a> {
     pub name: Option<&'a str>,
-    pub value: Expression<'a>,
+    pub value: ExpressionType<'a>,
     pub start: usize,
     pub end: usize,
 }
 
 impl CallArg<'_> {
-    pub fn new<'a>(name: Option<&'a str>, value: Expression<'a>, start: usize, end: usize) -> CallArg<'a> {
+    pub fn new<'a>(name: Option<&'a str>, value: ExpressionType<'a>, start: usize, end: usize) -> CallArg<'a> {
         CallArg { name, value, start, end }
     }
 }
+
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Closure<'a> {
@@ -497,43 +586,44 @@ impl Closure<'_> {
     }
 }
 
+
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct IfExpression<'a> {
+pub struct IfExpr<'a> {
     pub condition: Box<Expression<'a>>,
     pub then_branch: Vec<Statement<'a>>,
-    pub else_branch: Option<Either<Box<IfExpression<'a>>, Vec<Statement<'a>>>>,
+    pub else_branch: Option<Either<Box<IfExpr<'a>>, Vec<Statement<'a>>>>,
     pub start: usize,
     pub end: usize,
 }
 
-impl IfExpression<'_> {
+impl IfExpr<'_> {
     pub fn new<'a>(
         condition: Box<Expression<'a>>,
         then_branch: Vec<Statement<'a>>,
-        else_branch: Option<Either<Box<IfExpression<'a>>, Vec<Statement<'a>>>>,
+        else_branch: Option<Either<Box<IfExpr<'a>>, Vec<Statement<'a>>>>,
         start: usize,
         end: usize,
-    ) -> IfExpression<'a> {
-        IfExpression { condition, then_branch, else_branch, start, end }
+    ) -> IfExpr<'a> {
+        IfExpr { condition, then_branch, else_branch, start, end }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct MatchExpression<'a> {
+pub struct MatchExpr<'a> {
     pub value: Box<Expression<'a>>,
     pub arms: Vec<MatchArm<'a>>,
     pub start: usize,
     pub end: usize,
 }
 
-impl MatchExpression<'_> {
+impl MatchExpr<'_> {
     pub fn new<'a>(
         value: Box<Expression<'a>>,
         arms: Vec<MatchArm<'a>>,
         start: usize,
         end: usize,
-    ) -> MatchExpression<'a> {
-        MatchExpression { value, arms, start, end }
+    ) -> MatchExpr<'a> {
+        MatchExpr { value, arms, start, end }
     }
 }
 
@@ -546,7 +636,12 @@ pub struct MatchArm<'a> {
 }
 
 impl MatchArm<'_> {
-    pub fn new<'a>(pattern: Pattern<'a>, value: Either<ExpressionType<'a>, Vec<Statement<'a>>>, start: usize, end: usize) -> MatchArm<'a> {
+    pub fn new<'a>(
+        pattern: Pattern<'a>,
+        value: Either<ExpressionType<'a>, Vec<Statement<'a>>>,
+        start: usize,
+        end: usize
+    ) -> MatchArm<'a> {
         MatchArm { pattern, value, start, end }
     }
 }
@@ -560,12 +655,6 @@ pub enum Pattern<'a> {
         name: PathName<'a>,
         fields: Vec<Pattern<'a>>,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Visibility {
-    Public,
-    Private,
 }
 
 
