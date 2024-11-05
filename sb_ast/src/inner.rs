@@ -121,6 +121,21 @@ impl Function<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub struct Param<'a> {
+    pub implicit: bool,
+    pub name: &'a str,
+    pub ty: ExpressionType<'a>,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Param<'_> {
+    pub fn new<'a>(implicit: bool, name: &'a str, ty: ExpressionType<'a>, start: usize, end: usize) -> Param<'a> {
+        Param { implicit, name, ty, start, end }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Struct<'a> {
     pub visibility: Visibility,
     pub name: &'a str,
@@ -249,25 +264,13 @@ impl Import<'_> {
 pub struct GenericParam<'a> {
     pub name: &'a str,
     pub constraints: Vec<ExpressionType<'a>>,
+    pub start: usize,
+    pub end: usize,
 }
 
 impl GenericParam<'_> {
-    pub fn new<'a>(name: &'a str, constraints: Vec<ExpressionType<'a>>) -> GenericParam<'a> {
-        GenericParam { name, constraints }
-    }
-}
-
-
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Param<'a> {
-    pub implicit: bool,
-    pub name: &'a str,
-    pub ty: ExpressionType<'a>,
-}
-
-impl Param<'_> {
-    pub fn new<'a>(implicit: bool, name: &'a str, ty: ExpressionType<'a>) -> Param<'a> {
-        Param { implicit, name, ty }
+    pub fn new<'a>(name: &'a str, constraints: Vec<ExpressionType<'a>>, start: usize, end: usize) -> GenericParam<'a> {
+        GenericParam { name, constraints, start, end }
     }
 }
 
@@ -278,46 +281,49 @@ pub enum Statement<'a> {
         name: Pattern<'a>,
         ty: ExpressionType<'a>,
         value: ExpressionType<'a>,
+        start: usize,
+        end: usize,
     },
     Const {
         name: &'a str,
         ty: ExpressionType<'a>,
         value: ExpressionType<'a>,
+        start: usize,
+        end: usize,
     },
     Assignment {
         target: ExpressionType<'a>,
         value: ExpressionType<'a>,
+        start: usize,
+        end: usize,
     },
 }
 
 impl Statement<'_> {
-    pub fn new_let<'a>(name: Pattern<'a>, ty: ExpressionType<'a>, value: ExpressionType<'a>) -> Statement<'a> {
-        Statement::Let { name, ty, value, }
+    pub fn new_let<'a>(name: Pattern<'a>, ty: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
+        Statement::Let { name, ty, value, start, end }
     }
 
-    pub fn new_const<'a>(name: &'a str, ty: ExpressionType<'a>, value: ExpressionType<'a>) -> Statement<'a> {
-        Statement::Const { name, ty, value }
+    pub fn new_const<'a>(name: &'a str, ty: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
+        Statement::Const { name, ty, value, start, end }
     }
 
-    pub fn new_assignment<'a>(target: ExpressionType<'a>, value: ExpressionType<'a>) -> Statement<'a> {
-        Statement::Assignment { target, value }
+    pub fn new_assignment<'a>(target: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
+        Statement::Assignment { target, value, start, end }
     }
 }
 
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum ExpressionType<'a> {
-    Type(Type<'a>),
-    Expression(Expression<'a>),
+pub struct ExpressionType<'a> {
+    pub mutable: bool,
+    pub expression: Expression<'a>,
+    pub variadic: bool,
 }
 
 impl ExpressionType<'_> {
-    pub fn new_type<'a>(ty: Type<'a>) -> ExpressionType<'a> {
-        ExpressionType::Type(ty)
-    }
-
-    pub fn new_expression<'a>(expr: Expression<'a>) -> ExpressionType<'a> {
-        ExpressionType::Expression(expr)
+    pub fn new<'a>(mutable: bool, expression: Expression<'a>, variadic: bool) -> ExpressionType<'a> {
+        ExpressionType { mutable, expression, variadic }
     }
 }
 
@@ -344,94 +350,24 @@ pub enum BuiltinType<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Type<'a> {
-    pub mutable: bool,
-    pub ty: TypeKind<'a>,
-    pub variadic: bool,
-}
-
-impl Type<'_> {
-    pub fn new<'a>(mutable: bool, ty: TypeKind<'a>, variadic: bool) -> Type<'a> {
-        Type { mutable, ty, variadic }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum TypeKind<'a> {
-    BuiltIn(BuiltinType<'a>),
-    Variable(PathName<'a>),
-    Literal(Literal<'a>),
+pub enum Type<'a> {
+    /// User Types always begin with a capital letter
     User(PathName<'a>),
-    Call(Call<'a>),
-    MemberAccess {
-        object: Box<Expression<'a>>,
-        field: &'a str,
-        start: usize,
-        end: usize,
-    },
-    Parenthesized(Box<Type<'a>>),
-    Tuple(Vec<Type<'a>>),
-    IfType(IfExpr<'a>),
-    MatchType(MatchExpr<'a>),
-    UnaryOperation {
-        operator: UnaryOperator,
-        operand: Box<ExpressionType<'a>>,
-        start: usize,
-        end: usize,
-    },
-    BinaryOperation {
-        operator: BinaryOperator,
-        left: Box<ExpressionType<'a>>,
-        right: Box<ExpressionType<'a>>,
-        start: usize,
-        end: usize,
-    },
-    Generic {
-        name: Box<Type<'a>>,
-        params: Vec<Type<'a>>,
-        start: usize,
-        end: usize,
-    },
+    Builtin(BuiltinType<'a>),
+    /// A type that is parameterized by another type
+    /// e.g. `Maybe[Int]`
+    Parameterized(Box<Type<'a>>, Vec<Type<'a>>),
 }
-
-impl TypeKind<'_> {
-    pub fn new_binary<'a>(
-        operator: BinaryOperator,
-        left: Box<ExpressionType<'a>>,
-        right: Box<ExpressionType<'a>>,
-        start: usize,
-        end: usize,
-    ) -> TypeKind<'a> {
-        TypeKind::BinaryOperation { operator, left, right, start, end }
-    }
-
-    pub fn new_unary<'a>(
-        operator: UnaryOperator,
-        operand: Box<ExpressionType<'a>>,
-        start: usize,
-        end: usize,
-    ) -> TypeKind<'a> {
-        TypeKind::UnaryOperation { operator, operand, start, end }
-    }
-
-    pub fn new_member_access<'a>(
-        object: Box<Expression<'a>>,
-        field: &'a str,
-        start: usize,
-        end: usize,
-    ) -> TypeKind<'a> {
-        TypeKind::MemberAccess { object, field, start, end }
-    }
-}
-
-
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Expression<'a> {
+    Type(Type<'a>),
+    /// A variable is always begins with a lowercase letter
     Variable(PathName<'a>),
+    /// A constant is always completely uppercase
+    Constant(PathName<'a>),
     Literal(Literal<'a>),
     Call(Call<'a>),
-    //TrailingLambdas(Box<Expression<'a>>, Vec<Expression<'a>>),
     MemberAccess {
         object: Box<Expression<'a>>,
         field: &'a str,
@@ -441,7 +377,7 @@ pub enum Expression<'a> {
     Return(Box<Expression<'a>>),
     Closure(Closure<'a>),
     Parenthesized(Box<Expression<'a>>),
-    Tuple(Vec<Expression<'a>>),
+    Tuple(Vec<ExpressionType<'a>>),
     IfExpression(IfExpr<'a>),
     MatchExpression(MatchExpr<'a>),
     UnaryOperation {
@@ -524,7 +460,6 @@ pub enum Literal<'a> {
     Bool(bool),
     Unit,
     List(Vec<Expression<'a>>),
-    Type(Box<Type<'a>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
