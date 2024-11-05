@@ -1,8 +1,7 @@
 use either::Either;
-
 pub mod outer;
 pub mod inner;
-pub mod core;
+pub mod core_lang;
 
 #[derive(Debug)]
 pub enum ConversionError {
