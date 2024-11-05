@@ -374,10 +374,10 @@ pub fn (-)(x: nat, y: nat) -> if y > x { return int } else { return nat } = {
                                     ExpressionType {
                                         mutable: false,
                                         expression: Expression::Return(
-                                            Box::new(Expression::Type(
+                                            Some(Box::new(Expression::Type(
                                                 BuiltinType::Int,
                                             ),
-                                        )),
+                                        ))),
                                         variadic: false,
                                     },
                                 ),
@@ -389,10 +389,10 @@ pub fn (-)(x: nat, y: nat) -> if y > x { return int } else { return nat } = {
                                             ExpressionType {
                                                 mutable: false,
                                                 expression: Expression::Return(
-                                                    Box::new(Expression::Type(
+                                                    Some(Box::new(Expression::Type(
                                                         BuiltinType::Nat,
                                                     ),
-                                                )),
+                                                ))),
                                                 variadic: false,
                                             },
                                         ),
@@ -1540,11 +1540,11 @@ const x: i64 = 10;
                     ),
                     variadic: false,
                 },
-                value: Expression::Literal(
+                value: ExpressionType::new(false, Expression::Literal(
                     Literal::Int(
                         "10",
                     ),
-                ),
+                ), false),
                 start: 13,
                 end: 30,
             },
@@ -1586,7 +1586,7 @@ const x: i64 = 10?;
                     ),
                     variadic: false,
                 },
-                value: Expression::UnaryOperation {
+                value: ExpressionType::new(false, Expression::UnaryOperation {
                     operator: UnaryOperator::Try,
                     operand: Box::new(Expression::Literal(
                         Literal::Int(
@@ -1595,7 +1595,7 @@ const x: i64 = 10?;
                     )),
                     start: 28,
                     end: 31,
-                },
+                }, false),
                 start: 13,
                 end: 31,
             },
