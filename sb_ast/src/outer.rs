@@ -344,7 +344,7 @@ pub enum Expression<'a> {
         start: usize,
         end: usize,
     },
-    Return(Box<Expression<'a>>),
+    Return(Option<Box<Expression<'a>>>),
     Closure(Closure<'a>),
     Parenthesized(Box<Expression<'a>>),
     IfExpression(IfExpression<'a>),

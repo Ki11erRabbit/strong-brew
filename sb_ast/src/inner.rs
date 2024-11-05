@@ -356,7 +356,7 @@ pub enum Type<'a> {
     Builtin(BuiltinType<'a>),
     /// A type that is parameterized by another type
     /// e.g. `Maybe[Int]`
-    Parameterized(Box<Type<'a>>, Vec<Type<'a>>),
+    Parameterized(Box<Type<'a>>, Vec<Expression<'a>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
@@ -374,7 +374,7 @@ pub enum Expression<'a> {
         start: usize,
         end: usize,
     },
-    Return(Box<Expression<'a>>),
+    Return(Option<Box<Expression<'a>>>),
     Closure(Closure<'a>),
     Parenthesized(Box<Expression<'a>>),
     Tuple(Vec<ExpressionType<'a>>),
@@ -488,13 +488,13 @@ impl Call<'_> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct CallArg<'a> {
     pub name: Option<&'a str>,
-    pub value: ExpressionType<'a>,
+    pub value: Expression<'a>,
     pub start: usize,
     pub end: usize,
 }
 
 impl CallArg<'_> {
-    pub fn new<'a>(name: Option<&'a str>, value: ExpressionType<'a>, start: usize, end: usize) -> CallArg<'a> {
+    pub fn new<'a>(name: Option<&'a str>, value: Expression<'a>, start: usize, end: usize) -> CallArg<'a> {
         CallArg { name, value, start, end }
     }
 }

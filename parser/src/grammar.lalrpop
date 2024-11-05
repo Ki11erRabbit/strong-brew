@@ -412,7 +412,7 @@ pub EnumFields: Vec<Field<'a>> = {
 
 
 Const: TopLevelStatement<'a> = {
-    <start: @L> <vis:Visibility> "const" <p:Path> <name:Identifier> ":" <ty:ExpressionType> Assign <val:Expr> <end: @R> => {
+    <start: @L> <vis:Visibility> "const" <p:Path> <name:Identifier> ":" <ty:ExpressionType> Assign <val:ExpressionType> <end: @R> => {
         let mut p = p;
         p.segments.push(name);
         Const::new(vis, p, ty, val, start, end)
@@ -666,7 +666,9 @@ ExprWithoutTrailingNoCall: Expression<'a> = {
 
 ExprWithoutTrailing: Expression<'a> = {
     <trye:TryExpr> => trye,
-    "return" <expr:Expr> => Expression::Return(Box::new(expr)),
+    "return" <expr:Expr> => {
+        Expression::Return(Some(Box::new(expr)))
+    },
     "(" <expr:Expr> ")" => Expression::Parenthesized(Box::new(expr)),
 };
 
