@@ -9,6 +9,7 @@ fn test_module() {
     let input = r#"module test;"#;
     let file = parser::parse("test.sb", input).unwrap();
 
+    println!("{:#?}", file);
     assert_eq!(file, outer::File {
         path: outer::PathName::new(vec!["test"], 6, 11),
         content: Vec::new(),
@@ -21,6 +22,7 @@ fn test_module_with_import() {
 import test2;"#;
     let file = parser::parse("test.sb", input).unwrap();
 
+    println!("{:#?}", file);
     assert_eq!(file, outer::File {
         path: outer::PathName::new(vec!["test"], 6, 11),
         content: vec![
@@ -34,6 +36,7 @@ fn test_module_scope() {
     let input = r#"module test::inner;"#;
     let file = parser::parse("test.sb", input).unwrap();
 
+    println!("{:#?}", file);
     assert_eq!(file, outer::File {
         path: outer::PathName::new(vec!["test", "inner"], 7, 18),
         content: Vec::new(),
@@ -46,6 +49,7 @@ fn test_module_with_import_scope() {
 import test2::inner;"#;
     let file = parser::parse("test.sb", input).unwrap();
 
+    println!("{:#?}", file);
     assert_eq!(file, outer::File {
         path: outer::PathName::new(vec!["test", "inner"], 7, 18),
         content: vec![
@@ -62,6 +66,7 @@ pub fn print() = {
 }
 "#;
     let file = parser::parse("test.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
@@ -123,6 +128,7 @@ pub fn out::print() = {
 }
 "#;
     let file = parser::parse("test.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
@@ -185,6 +191,7 @@ pub fn (==)(x: A, y: A) = {
 }
 "#;
     let file = parser::parse("test.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
@@ -285,6 +292,7 @@ pub fn (-)(x: nat, y: nat) -> if y > x { return int } else { return nat } = {
 }
 "#;
     let file = parser::parse("test.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
@@ -432,6 +440,7 @@ for (A a : l) {
 return result;"
 "#;
     let file = parser::parse("test.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file,File {
     path: PathName {
         segments: vec![
@@ -591,6 +600,7 @@ pub fn main() = {
 }
 "#;
     let file = parser::parse("test.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
@@ -725,6 +735,7 @@ pub fn main() = {
 }
 "#;
     let file = parser::parse("test.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
@@ -865,6 +876,7 @@ pub fn (create[])[A](items: ...A) -> ArrayList[A] = {
 }
 "#;
     let file = parser::parse("arraylist.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
@@ -982,6 +994,7 @@ pub fn main() = {
 }
 "#;
     let file = parser::parse("main.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file,File {
     path: PathName {
         segments: vec![
@@ -1204,6 +1217,7 @@ pub fn main() = {
 }
 "#;
     let file = parser::parse("main.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
@@ -1307,6 +1321,7 @@ pub struct Arraylist[A] {
 }
 "#;
     let file = parser::parse("arraylist.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
@@ -1394,6 +1409,7 @@ pub enum Linkedlist[A] {
 }
 "#;
     let file = parser::parse("arraylist.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
@@ -1497,6 +1513,7 @@ fn test_const() {
 const x: i64 = 10;
 "#;
     let file = parser::parse("main.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
@@ -1542,6 +1559,7 @@ fn test_unary() {
 const x: i64 = 10?;
 "#;
     let file = parser::parse("main.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
@@ -1596,6 +1614,7 @@ pub fn main() = {
 }
 "#;
     let file = parser::parse("main.sb", input).unwrap();
+    println!("{:#?}", file);
     assert_eq!(file, File {
     path: PathName {
         segments: vec![
