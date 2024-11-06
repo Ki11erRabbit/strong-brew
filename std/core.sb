@@ -1,0 +1,5 @@
+module core;
+
+pub extern "Java" fn while(cond: fn () (), body: fn () ()) = "while (cond.run()) { body.run(); }";
+
+pub extern "Java" fn I64::for(start: i64, end: i64, body: fn () (i64)) = "for (int i = start; i < end; i++) { body.run(i); }";

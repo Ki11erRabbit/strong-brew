@@ -13,3 +13,7 @@ either = "1.13.0"
 [[test]]
 name = "parser_test"
 path = "parser_test.rs"
+
+[[test]]
+name = "conversion_tests"
+path = "conversion_tests.rs"

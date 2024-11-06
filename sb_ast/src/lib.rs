@@ -21,6 +21,7 @@ pub enum ExpressionState {
     InType,
 }
 
+pub use core_lang::convert_inner_to_core;
 
 pub fn convert_outer_to_inner(outer: outer::File) -> Result<inner::File, ConversionError> {
     let outer::File { path, content } = outer;

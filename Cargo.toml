@@ -2,7 +2,7 @@
 resolver = "2"
 
 
-members = ["parser", "sb_ast", "tests"]
+members = ["parser", "sb_ast", "strong-brewc", "tests"]
 
 
 [workspace.dependencies]

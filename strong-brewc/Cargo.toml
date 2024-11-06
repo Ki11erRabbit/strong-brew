@@ -1,0 +1,8 @@
+[package]
+name = "strong-brewc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+parser = { workspace = true }
+sb_ast = { workspace = true }
