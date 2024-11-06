@@ -259,13 +259,6 @@ pub enum Statement<'a> {
         start: usize,
         end: usize,
     },
-    Const {
-        name: &'a str,
-        ty: ExpressionType<'a>,
-        value: ExpressionType<'a>,
-        start: usize,
-        end: usize,
-    },
     Assignment {
         target: ExpressionType<'a>,
         value: ExpressionType<'a>,
@@ -277,10 +270,6 @@ pub enum Statement<'a> {
 impl Statement<'_> {
     pub fn new_let<'a>(name: Pattern<'a>, ty: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
         Statement::Let { name, ty, value, start, end }
-    }
-
-    pub fn new_const<'a>(name: &'a str, ty: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
-        Statement::Const { name, ty, value, start, end }
     }
 
     pub fn new_assignment<'a>(target: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {

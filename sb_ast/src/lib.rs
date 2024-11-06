@@ -2,6 +2,8 @@ use either::Either;
 pub mod outer;
 pub mod inner;
 pub mod core_lang;
+pub mod core_annotated;
+pub mod normal_form;
 
 #[derive(Debug)]
 pub enum ConversionError {
