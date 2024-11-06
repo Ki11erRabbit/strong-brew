@@ -102,8 +102,7 @@ impl <'a> TypeChecker<'a> {
         name: &'a str,
         file: &'a core_lang::File<'a>
     ) -> Result<core_annotated::File, TypeError> {
-
-        let mut result = Vec::new();
+        
 
         let mut imports = Vec::new();
         let mut enums = Vec::new();
@@ -129,9 +128,17 @@ impl <'a> TypeChecker<'a> {
         }
 
         let imports = Self::convert_imports(imports);
-        self.check_enums(enums)?;
-        self.check_functions(functions)?;
-        self.check_consts(consts)?;
+        let enums = self.check_enums(enums)?;
+        let functions = self.check_functions(functions)?;
+        let consts = self.check_consts(consts)?;
+
+        let mut decl = imports;
+        decl.extend(enums);
+        decl.extend(consts);
+        decl.extend(functions);
+
+
+        let file = core_annotated::File::new(decl, file.start, file.end);
 
         
         Ok(result)
