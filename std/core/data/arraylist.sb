@@ -1,0 +1,24 @@
+module core::data::arraylist;
+
+import core::data::fin;
+
+
+pub struct Arraylist[T: type, N: nat] {
+    array: Array[T, N],
+    pub length: N,
+}
+
+
+pub extern "Java" fn Arraylist::<T>(create[])(items: (...T)[N]) -> Arraylist[T, N] = "
+    return new Arraylist(items, Nat.fromInt(items.length));
+"
+
+pub fn Arraylist::mut::(set[])(list: mut Arraylist[T, N], index: Fin[N], item: N) = {
+    let Arraylist(array, length): (mut Array[T, N], N) = list
+    list.array[index] = item
+}
+
+pub fn Arraylist::(get[])(list: Arraylist[T, N], index: Fin[N]) -> T = {
+    return list.array[index]
+}
+
