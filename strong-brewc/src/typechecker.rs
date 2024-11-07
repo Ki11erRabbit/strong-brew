@@ -1,4 +1,4 @@
-use sb_ast::core_annotated::{self, BuiltinType, Expression, ExpressionType, Import, PathName, TopLevelStatement, Type};
+use sb_ast::core_annotated::{self, BuiltinType, Enum, Expression, ExpressionType, Import, PathName, TopLevelStatement, Type};
 use sb_ast::core_lang;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -155,5 +155,32 @@ impl <'a> TypeChecker<'a> {
             _ => unreachable!(),
         }).collect()
     }
-    
+
+
+    fn check_enums(&mut self, enums: Vec<&core_lang::TopLevelStatement<'a>>) -> Result<Vec<TopLevelStatement>, TypeError> {
+        let mut result = Vec::new();
+
+        for enum_ in enums {
+            let core_lang::TopLevelStatement::Enum(enum_) = enum_ else {
+                unreachable!("Encountered a non-enum after filtering only enums")
+            };
+            result.push(TopLevelStatement::Enum(self.check_enum(enum_)?));
+        }
+
+        Ok(result)
+    }
+
+    fn check_enum(&mut self, enum_: &core_lang::Enum<'a>) -> Result<Enum, TypeError> {
+        let core_lang::Enum {
+            visibility,
+            name,
+            generic_params,
+            variants,
+            start,
+            end,
+        } = enum_;
+
+        
+                
+    }
 }

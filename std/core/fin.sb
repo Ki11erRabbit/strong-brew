@@ -1,0 +1,8 @@
+
+
+
+pub dependent enum Fin[n: nat] {
+    Zero
+    Succ(f: Fin[n - 1]),
+}
+
