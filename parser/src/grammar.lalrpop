@@ -350,8 +350,8 @@ pub TypeParamList: Vec<GenericParam<'a>> = {
 
 
 pub TypeParam: GenericParam<'a> = {
-    <start: @L> <name:Expr> <end: @R> => GenericParam::new(name, None, start, end),
-    <start: @L> <name:Expr> ":" <param:ExpressionType> <end: @R> => {
+    //<start: @L> <name:Pattern> <end: @R> => GenericParam::new(name, None, start, end),
+    <start: @L> <name:Pattern> ":" <param:ExpressionType> <end: @R> => {
         GenericParam::new(name, Some(param), start, end)
     },
 };

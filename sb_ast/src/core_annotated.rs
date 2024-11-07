@@ -234,14 +234,14 @@ impl Import {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct GenericParam {
-    pub name: Expression,
+    pub name: Pattern,
     pub constraint: Option<ExpressionType>,
     pub start: usize,
     pub end: usize,
 }
 
 impl GenericParam {
-    pub fn new(name: Expression, constraint: Option<ExpressionType>, start: usize, end: usize) -> GenericParam {
+    pub fn new(name: Pattern, constraint: Option<ExpressionType>, start: usize, end: usize) -> GenericParam {
         GenericParam { name, constraint, start, end }
     }
 }

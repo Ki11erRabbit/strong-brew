@@ -12,9 +12,9 @@ pub enum TypeError {
 
 }
 
-fn generate_internal_globals() -> HashMap<Vec<&'static str>, Rc<RefCell<ExpressionType>>> {
+fn generate_internal_globals() -> HashMap<Vec<String>, Rc<RefCell<ExpressionType>>> {
     let mut globals = HashMap::new();
-    globals.insert(vec!["nat", "Zero"],
+    globals.insert(vec!["nat", "Zero"].into_iter().map(|x| x.to_string()).collect(),
                    Rc::new(RefCell::new(ExpressionType::new(
                        Expression::Type(
                            Type::Builtin(BuiltinType::Function {
@@ -24,7 +24,7 @@ fn generate_internal_globals() -> HashMap<Vec<&'static str>, Rc<RefCell<Expressi
                                        Expression::Type(Type::Builtin(BuiltinType::Nat)), false)),
                            }),
                        ), false))));
-    globals.insert(vec!["nat", "Succ"],
+    globals.insert(vec!["nat", "Succ"].into_iter().map(|x| x.to_string()).collect(),
                    Rc::new(RefCell::new(ExpressionType::new(
                        Expression::Type(
                            Type::Builtin(BuiltinType::Function {
@@ -45,9 +45,9 @@ fn generate_internal_globals() -> HashMap<Vec<&'static str>, Rc<RefCell<Expressi
 
 
 pub struct TypeChecker<'a> {
-    overloads: HashMap<&'a str, Vec<&'a Vec<&'a str>>>,
-    global_types: HashMap<Vec<&'a str>, Rc<RefCell<ExpressionType>>>,
-    local_types: Vec<HashMap<Vec<&'a str>, Rc<RefCell<ExpressionType>>>>,
+    overloads: HashMap<&'a str, Vec<&'a Vec<String>>>,
+    global_types: HashMap<Vec<String>, Rc<RefCell<ExpressionType>>>,
+    local_types: Vec<HashMap<Vec<String>, Rc<RefCell<ExpressionType>>>>,
     seen_files: HashSet<String>,
 }
 
@@ -61,13 +61,15 @@ impl <'a> TypeChecker<'a> {
         }
     }
 
-    pub fn add_global_type(&mut self, name: &'a Vec<&'a str>, ty: Rc<RefCell<ExpressionType>>) {
-        let name = name.clone();
+    pub fn add_global_type<S>(&mut self, name: &Vec<S>, ty: Rc<RefCell<ExpressionType>>)
+    where S: AsRef<str> {
+        let name = name.into_iter().map(|x| x.as_ref().to_string()).collect();
         self.global_types.insert(name, ty);
     }
 
-    pub fn add_local_type(&mut self, name: &'a Vec<&'a str>, ty: Rc<RefCell<ExpressionType>>) {
-        let name = name.clone();
+    pub fn add_local_type<S>(&mut self, name: &Vec<S>, ty: Rc<RefCell<ExpressionType>>)
+    where S: AsRef<str>{
+        let name = name.into_iter().map(|x| x.as_ref().to_string()).collect();
         self.local_types.last_mut().unwrap().insert(name, ty);
     }
 
@@ -79,11 +81,13 @@ impl <'a> TypeChecker<'a> {
         self.local_types.pop();
     }
 
-    pub fn get_type(&self, name: &'a Vec<&'a str>) -> Option<Rc<RefCell<ExpressionType>>> {
-        if let Some(ty) = self.local_types.last().unwrap().get(name) {
+    pub fn get_type<S>(&self, name: &Vec<S>) -> Option<Rc<RefCell<ExpressionType>>>
+    where S: AsRef<str> {
+        let name: Vec<String> = name.into_iter().map(|x| x.as_ref().to_string()).collect();
+        if let Some(ty) = self.local_types.last().unwrap().get(&name) {
             return Some(ty.clone());
         }
-        self.global_types.get(name).map(|ty| ty.clone())
+        self.global_types.get(&name).map(|ty| ty.clone())
     }
 
     fn convert_visibility(visibility: &core_lang::Visibility) -> core_annotated::Visibility {
@@ -226,10 +230,30 @@ impl <'a> TypeChecker<'a> {
             end,
         } = enum_;
 
+        self.push_local_scope();
+
         let visibility = Self::convert_visibility(visibility);
-        let generic_params = generic_params.iter().map(|x| self.convert_generic_param(x)).collect();
+        let generic_params = generic_params
+            .iter()
+            .map(|x| {
+                let (p, (name, ty)) = self.convert_generic_parameter(x)?;
+                self.add_local_type(&vec![name], Rc::new(RefCell::new(ty)));
+                Ok(p)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let variants = self.check_variants(variants)?;
 
+        self.pop_local_scope();
+
+        if generic_params.is_empty() {
+            self.add_global_type(&vec![name], Rc::new(RefCell::new(ExpressionType::new(
+                Expression::Type(Type::User(PathName::new(vec![name], *start, *end))),
+                false,
+            ))));
+        } else {
+
+        }
+        
         Ok(Enum::new(visibility, name, generic_params, variants, *start, *end))
     }
 
@@ -253,8 +277,24 @@ impl <'a> TypeChecker<'a> {
     fn convert_generic_parameter(
         &mut self,
         param: &core_lang::GenericParam<'a>
-    ) -> core_annotated::GenericParam {
+    ) -> Result<(core_annotated::GenericParam, (String, core_annotated::ExpressionType)), TypeError> {
         let core_lang::GenericParam { name, constraint, start, end } = param;
-        let constraint = self.does_type_exist(constraint).unwrap();
+        let constraint = constraint.map(|x| self.does_type_exist(x)).transpose()?;
+
+
+        let ty = constraint.unwrap_or_else(|| {
+            let ty = ExpressionType::new(
+                Expression::Type(Type::Builtin(BuiltinType::Type)),
+                false,
+            );
+            ty
+        });
+
+        let (pattern, name) = self.does_type_match(name, &ty)?;
+        
+        let param = core_annotated::GenericParam::new(pattern, constraint, *start, *end);
+        
+
+        Ok((param, (name, ty)))
     }
 }
