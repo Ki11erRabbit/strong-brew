@@ -228,15 +228,15 @@ impl Import<'_> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct GenericParam<'a> {
-    pub name: &'a str,
-    pub constraints: Vec<ExpressionType<'a>>,
+    pub name: Expression<'a>,
+    pub constraint: Option<ExpressionType<'a>>,
     pub start: usize,
     pub end: usize,
 }
 
 impl GenericParam<'_> {
-    pub fn new<'a>(name: &'a str, constraints: Vec<ExpressionType<'a>>, start: usize, end: usize) -> GenericParam<'a> {
-        GenericParam { name, constraints, start, end }
+    pub fn new<'a>(name: Expression<'a>, constraint: Option<ExpressionType<'a>>, start: usize, end: usize) -> GenericParam<'a> {
+        GenericParam { name, constraint, start, end }
     }
 }
 

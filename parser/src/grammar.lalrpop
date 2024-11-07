@@ -350,14 +350,10 @@ pub TypeParamList: Vec<GenericParam<'a>> = {
 
 
 pub TypeParam: GenericParam<'a> = {
-    <start: @L> <name:Identifier> <end: @R> => GenericParam::new(name, Vec::new(), start, end),
-    /*<start: @L> <name:Identifier> ":" <param:ExpressionType> <params:("|" <ExpressionType>)*>  <end: @R> => {
-        let mut v = vec![param];
-        for p in params.into_iter() {
-            v.push(p);
-        }
-        GenericParam::new(name, v, start, end)
-    },*/
+    <start: @L> <name:Expr> <end: @R> => GenericParam::new(name, None, start, end),
+    <start: @L> <name:Expr> ":" <param:ExpressionType> <end: @R> => {
+        GenericParam::new(name, Some(param), start, end)
+    },
 };
 
 pub Struct: TopLevelStatement<'a> = {

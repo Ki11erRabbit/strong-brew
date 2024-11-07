@@ -1,8 +1,6 @@
 use either::Either;
-use std::cell::RefCell;
-use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct File {
     pub path: PathName,
     pub content: Vec<TopLevelStatement>,
@@ -35,7 +33,7 @@ impl PathName {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub enum TopLevelStatement {
     Function(Function),
     Enum(Enum),
@@ -49,7 +47,7 @@ pub enum Visibility {
     Private,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub enum Function {
     Regular {
         visibility: Visibility,
@@ -122,7 +120,7 @@ impl Function {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Param {
     pub implicit: bool,
     pub name: String,
@@ -137,7 +135,7 @@ impl Param {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Field {
     pub visibility: Visibility,
     pub name: String,
@@ -152,7 +150,7 @@ impl Field {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Enum {
     pub visibility: Visibility,
     pub name: String,
@@ -182,7 +180,7 @@ impl Enum {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Variant {
     pub name: String,
     pub fields: Vec<Field>,
@@ -196,7 +194,7 @@ impl Variant {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Const {
     pub visibility: Visibility,
     pub name: PathName,
@@ -232,21 +230,21 @@ impl Import {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct GenericParam {
-    pub name: Expression,
-    pub constraint: Option<ExpressionType>,
+    pub name: String,
+    pub constraints: Vec<ExpressionType>,
     pub start: usize,
     pub end: usize,
 }
 
 impl GenericParam {
-    pub fn new(name: Expression, constraint: Option<ExpressionType>, start: usize, end: usize) -> GenericParam {
-        GenericParam { name, constraint, start, end }
+    pub fn new(name: &str, constraints: Vec<ExpressionType>, start: usize, end: usize) -> GenericParam {
+        GenericParam { name: name.to_string(), constraints, start, end }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Statement {
     Expression(ExpressionType),
     Let {
@@ -275,20 +273,20 @@ impl Statement {
 }
 
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct ExpressionType {
     pub expression: Expression,
     pub variadic: bool,
 }
 
-impl ExpressionType {
+impl ExpressionType<'_> {
     pub fn new(expression: Expression, variadic: bool) -> ExpressionType {
         ExpressionType { expression, variadic }
     }
 }
 
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum BuiltinType {
     I8,
     I16,
@@ -309,7 +307,7 @@ pub enum BuiltinType {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Type {
     /// User Types always begin with a capital letter
     User(PathName),
@@ -317,12 +315,11 @@ pub enum Type {
     /// A type that is parameterized by another type
     /// e.g. `Maybe[Int]`
     Parameterized(Box<Type>, Vec<Expression>),
-    PossibleType(Vec<ExpressionType>),
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Expression {
-    Type(Type),
+    Type(Type, Rc<RefCell<ExpressionType>>),
     /// A variable is always begins with a lowercase letter
     Variable(PathName, Rc<RefCell<ExpressionType>>),
     /// A constant is always completely uppercase
@@ -334,7 +331,7 @@ pub enum Expression {
         field: String,
         start: usize,
         end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
+        ty: Box<ExpressionType>,
     },
     Return(Option<Box<Expression>>, Rc<RefCell<ExpressionType>>),
     Closure(Closure, Rc<RefCell<ExpressionType>>),
@@ -347,7 +344,7 @@ pub enum Expression {
         operand: Box<Expression>,
         start: usize,
         end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
+        ty: Box<ExpressionType>,
     },
     BinaryOperation {
         operator: BinaryOperator,
@@ -355,7 +352,7 @@ pub enum Expression {
         right: Box<Expression>,
         start: usize,
         end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
+        ty: Box<ExpressionType>,
     },
 }
 
@@ -366,7 +363,7 @@ impl Expression {
         right: Box<Expression>,
         start: usize,
         end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
+        ty: Box<ExpressionType>,
     ) -> Expression {
         Expression::BinaryOperation { operator, left, right, start, end, ty }
     }
@@ -376,7 +373,7 @@ impl Expression {
         operand: Box<Expression>,
         start: usize,
         end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
+        ty: Box<ExpressionType>,
     ) -> Expression {
         Expression::UnaryOperation { operator, operand, start, end, ty }
     }
@@ -386,7 +383,7 @@ impl Expression {
         field: String,
         start: usize,
         end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
+        ty: Box<ExpressionType>,
     ) -> Expression {
         Expression::MemberAccess { object, field, start, end, ty }
     }
@@ -418,7 +415,7 @@ pub enum BinaryOperator {
     Index
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Literal {
     Int(String),
     Float(String),
@@ -429,7 +426,7 @@ pub enum Literal {
     List(Vec<Expression>),
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Call {
     pub name: Box<Expression>,
     pub type_args: Vec<ExpressionType>,
@@ -450,7 +447,7 @@ impl Call {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct CallArg {
     pub name: Option<String>,
     pub value: Expression,
@@ -465,7 +462,7 @@ impl CallArg {
 }
 
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Closure {
     pub params: Vec<Param>,
     pub return_type: Option<Box<ExpressionType>>,
@@ -481,14 +478,14 @@ impl Closure {
         body: Vec<Statement>,
         start: usize,
         end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
+        ty: Box<ExpressionType>,
     ) -> Expression {
         Expression::Closure(Closure { params, return_type, body, start, end }, ty)
     }
 }
 
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct IfExpr {
     pub condition: Box<Expression>,
     pub then_branch: Vec<Statement>,
@@ -509,7 +506,7 @@ impl IfExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct MatchExpr {
     pub value: Box<Expression>,
     pub arms: Vec<MatchArm>,
@@ -528,7 +525,7 @@ impl MatchExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct MatchArm {
     pub pattern: Pattern,
     pub value: Either<ExpressionType, Vec<Statement>>,
@@ -547,14 +544,14 @@ impl MatchArm {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Pattern {
-    Variable(String, Rc<RefCell<ExpressionType>>),
-    Literal(Literal, Rc<RefCell<ExpressionType>>),
-    Tuple(Vec<Pattern>, Rc<RefCell<ExpressionType>>),
+    Variable(String, ExpressionType),
+    Literal(Literal, ExpressionType),
+    Tuple(Vec<Pattern>, ExpressionType),
     Constructor {
         name: PathName,
         fields: Vec<Pattern>,
-        ty: Rc<RefCell<ExpressionType>>,
+        ty: ExpressionType,
     },
 }

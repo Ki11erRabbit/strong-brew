@@ -1,3 +1,6 @@
+use petgraph::adj::NodeIndex;
+use petgraph::algo;
+use petgraph::graph::UnGraph;
 use sb_ast::core_annotated::{self, BuiltinType, Enum, Expression, ExpressionType, Import, PathName, TopLevelStatement, Type};
 use sb_ast::core_lang;
 use std::collections::{HashMap, HashSet};
@@ -83,6 +86,13 @@ impl <'a> TypeChecker<'a> {
         self.global_types.get(name).map(|ty| ty.clone())
     }
 
+    fn convert_visibility(visibility: &core_lang::Visibility) -> core_annotated::Visibility {
+        match visibility {
+            core_lang::Visibility::Public => core_annotated::Visibility::Public,
+            core_lang::Visibility::Private => core_annotated::Visibility::Private,
+        }
+    }
+
     pub fn check_files(
         &mut self,
         files: &'a Vec<(&'a str, core_lang::File<'a>)>
@@ -102,7 +112,8 @@ impl <'a> TypeChecker<'a> {
         name: &'a str,
         file: &'a core_lang::File<'a>
     ) -> Result<core_annotated::File, TypeError> {
-        
+        let core_lang::PathName { segments, start, end } = &file.path;
+        let path = PathName::new(segments.clone(), *start, *end);
 
         let mut imports = Vec::new();
         let mut enums = Vec::new();
@@ -138,10 +149,10 @@ impl <'a> TypeChecker<'a> {
         decl.extend(functions);
 
 
-        let file = core_annotated::File::new(decl, file.start, file.end);
+        let file = core_annotated::File::new(path, decl);
 
         
-        Ok(result)
+        Ok(file)
     }
 
     fn convert_imports(imports: Vec<&core_lang::TopLevelStatement<'a>>) -> Vec<TopLevelStatement> {
@@ -160,17 +171,52 @@ impl <'a> TypeChecker<'a> {
     fn check_enums(&mut self, enums: Vec<&core_lang::TopLevelStatement<'a>>) -> Result<Vec<TopLevelStatement>, TypeError> {
         let mut result = Vec::new();
 
-        for enum_ in enums {
+        let mut names_to_positions = HashMap::new();
+
+        for (i, enum_) in enums.iter().enumerate() {
             let core_lang::TopLevelStatement::Enum(enum_) = enum_ else {
                 unreachable!("Encountered a non-enum after filtering only enums")
             };
-            result.push(TopLevelStatement::Enum(self.check_enum(enum_)?));
+            names_to_positions.insert(enum_.name, i);
+        }
+        
+        let mut edges = Vec::new();
+
+        for (i, enum_) in enums.iter().enumerate() {
+            let core_lang::TopLevelStatement::Enum(enum_) = enum_ else {
+                unreachable!("Encountered a non-enum after filtering only enums")
+            };
+            let core_lang::Enum { variants, .. } = enum_;
+            for variant in variants {
+                let core_lang::Variant { name, ..} = variant;
+                if let Some(j) = names_to_positions.get(name) {
+                    edges.push((i, *j));
+                }
+            }
+        }
+        let edges = edges.iter().map(|(x, y)| (*x as u32, *y as u32)).collect::<Vec<(u32, u32)>>();
+
+        let graph = UnGraph::<u32, ()>::from_edges(&edges);
+
+        let nodes = algo::kosaraju_scc(&graph);
+
+        let nodes = nodes.into_iter().flatten().map(|x| x.index()).collect::<Vec<usize>>();
+
+        let mut enums = enums.into_iter().map(Some).collect::<Vec<Option<&core_lang::TopLevelStatement<'a>>>>();
+
+        for node in nodes {
+            let enum_ = enums[node].take().unwrap();
+
+            let core_lang::TopLevelStatement::Enum(enum_) = enum_ else {
+                unreachable!("Encountered a non-enum after filtering only enums")
+            };
+            result.push(self.check_enum(enum_)?);
         }
 
         Ok(result)
     }
 
-    fn check_enum(&mut self, enum_: &core_lang::Enum<'a>) -> Result<Enum, TypeError> {
+    fn check_enum(&mut self, enum_: &core_lang::Enum<'a>) -> Result<TopLevelStatement, TypeError> {
         let core_lang::Enum {
             visibility,
             name,
@@ -180,7 +226,35 @@ impl <'a> TypeChecker<'a> {
             end,
         } = enum_;
 
-        
-                
+        let visibility = Self::convert_visibility(visibility);
+        let generic_params = generic_params.iter().map(|x| self.convert_generic_param(x)).collect();
+        let variants = self.check_variants(variants)?;
+
+        Ok(Enum::new(visibility, name, generic_params, variants, *start, *end))
+    }
+
+    fn check_variants(&mut self, variants: &Vec<core_lang::Variant<'a>>) -> Result<Vec<core_annotated::Variant>, TypeError> {
+        let mut result = Vec::new();
+        for variant in variants {
+            let core_lang::Variant { name, fields, start, end } = variant;
+            let fields = fields.iter().map(|x| self.check_field(x)).collect::<Result<Vec<_>, _>>()?;
+            result.push(core_annotated::Variant::new(name, fields, *start, *end));
+        }
+        Ok(result)
+    }
+
+    fn check_field(&mut self, field: &core_lang::Field<'a>) -> Result<core_annotated::Field, TypeError> {
+        let core_lang::Field { visibility, name, ty, start, end } = field;
+        let visibility = Self::convert_visibility(visibility);
+        let ty = self.does_type_exist(ty)?;
+        Ok(core_annotated::Field::new(visibility, name, ty, *start, *end))
+    }
+
+    fn convert_generic_parameter(
+        &mut self,
+        param: &core_lang::GenericParam<'a>
+    ) -> core_annotated::GenericParam {
+        let core_lang::GenericParam { name, constraint, start, end } = param;
+        let constraint = self.does_type_exist(constraint).unwrap();
     }
 }
