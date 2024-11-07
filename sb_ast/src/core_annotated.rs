@@ -56,7 +56,7 @@ pub enum Function {
         name: PathName,
         generic_params: Vec<GenericParam>,
         params: Vec<Param>,
-        return_type: ExpressionType,
+        return_type: Type,
         body: Vec<Statement>,
         start: usize,
         end: usize,
@@ -67,7 +67,7 @@ pub enum Function {
         name: PathName,
         generic_params: Vec<GenericParam>,
         params: Vec<Param>,
-        return_type: ExpressionType,
+        return_type: Type,
         body: String,
         start: usize,
         end: usize,
@@ -80,7 +80,7 @@ impl Function {
         name: PathName,
         generic_params: Vec<GenericParam>,
         params: Vec<Param>,
-        return_type: ExpressionType,
+        return_type: Type,
         body: Vec<Statement>,
         start: usize,
         end: usize,
@@ -103,7 +103,7 @@ impl Function {
         name: PathName,
         generic_params: Vec<GenericParam>,
         params: Vec<Param>,
-        return_type: ExpressionType,
+        return_type: Type,
         body: &str,
         start: usize,
         end: usize,
@@ -126,13 +126,13 @@ impl Function {
 pub struct Param {
     pub implicit: bool,
     pub name: String,
-    pub ty: ExpressionType,
+    pub ty: Type,
     pub start: usize,
     pub end: usize,
 }
 
 impl Param {
-    pub fn new(implicit: bool, name: &str, ty: ExpressionType, start: usize, end: usize) -> Param {
+    pub fn new(implicit: bool, name: &str, ty: Type, start: usize, end: usize) -> Param {
         Param { implicit, name: name.to_string(), ty, start, end }
     }
 }
@@ -141,13 +141,13 @@ impl Param {
 pub struct Field {
     pub visibility: Visibility,
     pub name: String,
-    pub ty: ExpressionType,
+    pub ty: Type,
     pub start: usize,
     pub end: usize,
 }
 
 impl Field {
-    pub fn new(visibility: Visibility, name: &str, ty: ExpressionType, start: usize, end: usize) -> Field {
+    pub fn new(visibility: Visibility, name: &str, ty: Type, start: usize, end: usize) -> Field {
         Field { visibility, name: name.to_string(), ty, start, end }
     }
 }
@@ -200,8 +200,8 @@ impl Variant {
 pub struct Const {
     pub visibility: Visibility,
     pub name: PathName,
-    pub ty: ExpressionType,
-    pub value: ExpressionType,
+    pub ty: Type,
+    pub value: Expression,
     pub start: usize,
     pub end: usize,
 }
@@ -210,8 +210,8 @@ impl Const {
     pub fn new(
         visibility: Visibility,
         name: PathName,
-        ty: ExpressionType,
-        value: ExpressionType,
+        ty: Type,
+        value: Expression,
         start: usize,
         end: usize,
     ) -> TopLevelStatement {
@@ -235,57 +235,45 @@ impl Import {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct GenericParam {
     pub name: Pattern,
-    pub constraint: Option<ExpressionType>,
+    pub constraint: Option<Type>,
     pub start: usize,
     pub end: usize,
 }
 
 impl GenericParam {
-    pub fn new(name: Pattern, constraint: Option<ExpressionType>, start: usize, end: usize) -> GenericParam {
+    pub fn new(name: Pattern, constraint: Option<Type>, start: usize, end: usize) -> GenericParam {
         GenericParam { name, constraint, start, end }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Statement {
-    Expression(ExpressionType),
+    Expression(Expression),
     Let {
         name: Pattern,
-        ty: ExpressionType,
-        value: ExpressionType,
+        ty: Type,
+        value: Expression,
         start: usize,
         end: usize,
     },
     Assignment {
-        target: ExpressionType,
-        value: ExpressionType,
+        target: Expression,
+        value: Expression,
         start: usize,
         end: usize,
     },
 }
 
 impl Statement {
-    pub fn new_let(name: Pattern, ty: ExpressionType, value: ExpressionType, start: usize, end: usize) -> Statement {
+    pub fn new_let(name: Pattern, ty: Type, value: Expression, start: usize, end: usize) -> Statement {
         Statement::Let { name, ty, value, start, end }
     }
 
-    pub fn new_assignment(target: ExpressionType, value: ExpressionType, start: usize, end: usize) -> Statement {
+    pub fn new_assignment(target: Expression, value: Expression, start: usize, end: usize) -> Statement {
         Statement::Assignment { target, value, start, end }
     }
 }
 
-
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct ExpressionType {
-    pub expression: Expression,
-    pub variadic: bool,
-}
-
-impl ExpressionType {
-    pub fn new(expression: Expression, variadic: bool) -> ExpressionType {
-        ExpressionType { expression, variadic }
-    }
-}
 
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -304,8 +292,8 @@ pub enum BuiltinType {
     Never,
     Type,
     Function {
-        params: Vec<ExpressionType>,
-        return_type: Box<ExpressionType>,
+        params: Vec<Type>,
+        return_type: Box<Type>,
     },
 }
 
@@ -316,8 +304,10 @@ pub enum Type {
     Builtin(BuiltinType),
     /// A type that is parameterized by another type
     /// e.g. `Maybe[Int]`
-    Parameterized(Box<Type>, Vec<Expression>),
-    PossibleType(Vec<ExpressionType>),
+    Parameterized(Box<Type>, Vec<Type>),
+    PossibleType(Vec<Type>),
+    TupleType(Vec<Type>),
+    Expression(Box<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]

@@ -1,7 +1,7 @@
 use petgraph::adj::NodeIndex;
 use petgraph::algo;
 use petgraph::graph::UnGraph;
-use sb_ast::core_annotated::{self, BuiltinType, Enum, Expression, ExpressionType, Import, PathName, TopLevelStatement, Type};
+use sb_ast::core_annotated::{self, BuiltinType, Enum, Expression, Import, PathName, TopLevelStatement, Type};
 use sb_ast::core_lang;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -12,31 +12,27 @@ pub enum TypeError {
 
 }
 
-fn generate_internal_globals() -> HashMap<Vec<String>, Rc<RefCell<ExpressionType>>> {
+fn generate_internal_globals() -> HashMap<Vec<String>, Rc<RefCell<Type>>> {
     let mut globals = HashMap::new();
     globals.insert(vec!["nat", "Zero"].into_iter().map(|x| x.to_string()).collect(),
-                   Rc::new(RefCell::new(ExpressionType::new(
-                       Expression::Type(
+                   Rc::new(RefCell::new(Expression::Type(
                            Type::Builtin(BuiltinType::Function {
                                params: vec![],
                                return_type: Box::new(
-                                   ExpressionType::new(
-                                       Expression::Type(Type::Builtin(BuiltinType::Nat)), false)),
+                                       Expression::Type(Type::Builtin(BuiltinType::Nat))),
                            }),
-                       ), false))));
+                       ))));
     globals.insert(vec!["nat", "Succ"].into_iter().map(|x| x.to_string()).collect(),
                    Rc::new(RefCell::new(ExpressionType::new(
                        Expression::Type(
                            Type::Builtin(BuiltinType::Function {
                                params: vec![
-                                   ExpressionType::new(
-                                       Expression::Type(Type::Builtin(BuiltinType::Nat)), false)
+                                       Expression::Type(Type::Builtin(BuiltinType::Nat))
                                ],
                                return_type: Box::new(
-                                   ExpressionType::new(
-                                       Expression::Type(Type::Builtin(BuiltinType::Nat)), false)),
+                                       Expression::Type(Type::Builtin(BuiltinType::Nat)))
                            }),
-                       ), false))));
+                       )))));
 
 
 
@@ -46,8 +42,8 @@ fn generate_internal_globals() -> HashMap<Vec<String>, Rc<RefCell<ExpressionType
 
 pub struct TypeChecker<'a> {
     overloads: HashMap<&'a str, Vec<&'a Vec<String>>>,
-    global_types: HashMap<Vec<String>, Rc<RefCell<ExpressionType>>>,
-    local_types: Vec<HashMap<Vec<String>, Rc<RefCell<ExpressionType>>>>,
+    global_types: HashMap<Vec<String>, Rc<RefCell<Type>>>,
+    local_types: Vec<HashMap<Vec<String>, Rc<RefCell<Type>>>>,
     seen_files: HashSet<String>,
 }
 
@@ -61,13 +57,13 @@ impl <'a> TypeChecker<'a> {
         }
     }
 
-    pub fn add_global_type<S>(&mut self, name: &Vec<S>, ty: Rc<RefCell<ExpressionType>>)
+    pub fn add_global_type<S>(&mut self, name: &Vec<S>, ty: Rc<RefCell<Type>>)
     where S: AsRef<str> {
         let name = name.into_iter().map(|x| x.as_ref().to_string()).collect();
         self.global_types.insert(name, ty);
     }
 
-    pub fn add_local_type<S>(&mut self, name: &Vec<S>, ty: Rc<RefCell<ExpressionType>>)
+    pub fn add_local_type<S>(&mut self, name: &Vec<S>, ty: Rc<RefCell<Type>>)
     where S: AsRef<str>{
         let name = name.into_iter().map(|x| x.as_ref().to_string()).collect();
         self.local_types.last_mut().unwrap().insert(name, ty);
@@ -81,7 +77,7 @@ impl <'a> TypeChecker<'a> {
         self.local_types.pop();
     }
 
-    pub fn get_type<S>(&self, name: &Vec<S>) -> Option<Rc<RefCell<ExpressionType>>>
+    pub fn get_type<S>(&self, name: &Vec<S>) -> Option<Rc<RefCell<Type>>>
     where S: AsRef<str> {
         let name: Vec<String> = name.into_iter().map(|x| x.as_ref().to_string()).collect();
         if let Some(ty) = self.local_types.last().unwrap().get(&name) {
@@ -233,26 +229,47 @@ impl <'a> TypeChecker<'a> {
         self.push_local_scope();
 
         let visibility = Self::convert_visibility(visibility);
-        let generic_params = generic_params
+        let pairs = generic_params
             .iter()
             .map(|x| {
                 let (p, (name, ty)) = self.convert_generic_parameter(x)?;
-                self.add_local_type(&vec![name], Rc::new(RefCell::new(ty)));
-                Ok(p)
+                self.add_local_type(&vec![name], Rc::new(RefCell::new(ty.clone())));
+                Ok((p, ty))
             })
             .collect::<Result<Vec<_>, _>>()?;
+
+        let mut generic_params = Vec::new();
+        let mut generic_args = Vec::new();
+        for (param, ty) in pairs {
+            generic_params.push(param);
+            generic_args.push(ty);
+        }
+
         let variants = self.check_variants(variants)?;
 
         self.pop_local_scope();
 
         if generic_params.is_empty() {
-            self.add_global_type(&vec![name], Rc::new(RefCell::new(ExpressionType::new(
-                Expression::Type(Type::User(PathName::new(vec![name], *start, *end))),
-                false,
-            ))));
+            self.add_global_type(&vec![name], Rc::new(RefCell::new(
+                Type::User(PathName::new(vec![name], *start, *end)),
+            )));
         } else {
+            let args = generic_args.into_iter().map(|x| {
+                let Expression::Type(ty) = x else {
+                    unreachable!("Generic arguments should be types")
+                };
+                ty
+            }).collect();
 
+            let ty = Expression::Type(
+                    Type::Parameterized(
+                        Box::new(Type::User(PathName::new(vec![name], *start, *end))),
+                        args,
+                    ));
+            let ty = Rc::new(RefCell::new(ty));
+            self.add_global_type(&vec![name], ty);
         }
+
         
         Ok(Enum::new(visibility, name, generic_params, variants, *start, *end))
     }
@@ -270,7 +287,7 @@ impl <'a> TypeChecker<'a> {
     fn check_field(&mut self, field: &core_lang::Field<'a>) -> Result<core_annotated::Field, TypeError> {
         let core_lang::Field { visibility, name, ty, start, end } = field;
         let visibility = Self::convert_visibility(visibility);
-        let ty = self.does_type_exist(ty)?;
+        let ty = self.does_type_exist_type(ty)?;
         Ok(core_annotated::Field::new(visibility, name, ty, *start, *end))
     }
 
@@ -279,15 +296,11 @@ impl <'a> TypeChecker<'a> {
         param: &core_lang::GenericParam<'a>
     ) -> Result<(core_annotated::GenericParam, (String, core_annotated::ExpressionType)), TypeError> {
         let core_lang::GenericParam { name, constraint, start, end } = param;
-        let constraint = constraint.map(|x| self.does_type_exist(x)).transpose()?;
+        let constraint = constraint.map(|x| self.does_type_exist_type(x)).transpose()?;
 
 
         let ty = constraint.unwrap_or_else(|| {
-            let ty = ExpressionType::new(
-                Expression::Type(Type::Builtin(BuiltinType::Type)),
-                false,
-            );
-            ty
+            Expression::Type(Type::Builtin(BuiltinType::Type))
         });
 
         let (pattern, name) = self.does_type_match(name, &ty)?;
@@ -296,5 +309,62 @@ impl <'a> TypeChecker<'a> {
         
 
         Ok((param, (name, ty)))
+    }
+
+    fn does_type_exist(&self, ty: &core_lang::Type<'a>) -> Result<core_annotated::Type, TypeError> {
+        let ty = self.convert_type(ty)?;
+
+
+        Ok(ty)
+    }
+
+    fn does_type_exist_type(&self, ty: &core_lang::ExpressionType<'a>) -> Result<core_annotated::Type, TypeError> {
+        let ty = self.convert_type(ty)?;
+
+
+        Ok(ty)
+    }
+
+    fn convert_type(&self, ty: &core_lang::Type<'a>) -> Result<core_annotated::Type, TypeError> {
+        let ty = match ty {
+            core_lang::Type::Builtin(builtin) => {
+                let ty = match builtin {
+                    core_lang::BuiltinType::Bool => BuiltinType::Bool,
+                    core_lang::BuiltinType::Nat => BuiltinType::Nat,
+                    core_lang::BuiltinType::Type => BuiltinType::Type,
+                    core_lang::BuiltinType::Int => BuiltinType::Int,
+                    core_lang::BuiltinType::I8 => BuiltinType::I8,
+                    core_lang::BuiltinType::I16 => BuiltinType::I16,
+                    core_lang::BuiltinType::I32 => BuiltinType::I32,
+                    core_lang::BuiltinType::I64 => BuiltinType::I64,
+                    core_lang::BuiltinType::Char => BuiltinType::Char,
+                    core_lang::BuiltinType::F32 => BuiltinType::F32,
+                    core_lang::BuiltinType::F64 => BuiltinType::F64,
+                    core_lang::BuiltinType::Unit => BuiltinType::Unit,
+                    core_lang::BuiltinType::Never => BuiltinType::Never,
+                    core_lang::BuiltinType::Function { params, return_type } => {
+                        let params = params.iter()
+                            .map(|x| self.does_type_exist_type(x))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        let return_type = self.does_type_exist_type(return_type)?;
+                        BuiltinType::Function { params, return_type: Box::new(return_type) }
+                    }
+                    
+                }
+            }
+            core_lang::Type::User(path) => {
+                let core_lang::PathName { segments, start, end } = path;
+                let segments = segments.iter().map(|x| x.to_string()).collect();
+                Type::User(PathName::new(segments, *start, *end))
+            }
+            core_lang::Type::Parameterized(main, exprs) => {
+                let main = Box::new(self.convert_type(main)?);
+                let exprs = exprs.iter()
+                    .map(|x| self.reduce_to_type(x))
+                    .collect::<Result<Vec<_>, _>>()?;
+                
+            }
+
+        }
     }
 }
