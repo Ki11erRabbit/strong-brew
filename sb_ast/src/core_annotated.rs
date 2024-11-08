@@ -306,79 +306,65 @@ pub enum Type {
     /// e.g. `Maybe[Int]`
     Parameterized(Box<Type>, Vec<Type>),
     PossibleType(Vec<Type>),
-    TupleType(Vec<Type>),
+    Tuple(Vec<Type>),
     Expression(Box<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub enum Expression {
+pub struct Expression {
+    pub raw: ExpressionRaw,
+    pub ty: Rc<RefCell<Type>>,
+}
+
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub enum ExpressionRaw {
     Type(Type),
     /// A variable is always begins with a lowercase letter
-    Variable(PathName, Rc<RefCell<ExpressionType>>),
+    Variable(PathName),
     /// A constant is always completely uppercase
-    Constant(PathName, Rc<RefCell<ExpressionType>>),
-    Literal(Literal, Rc<RefCell<ExpressionType>>),
-    Call(Call, Rc<RefCell<ExpressionType>>),
-    MemberAccess {
-        object: Box<Expression>,
-        field: String,
-        start: usize,
-        end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
-    },
-    Return(Option<Box<Expression>>, Rc<RefCell<ExpressionType>>),
-    Closure(Closure, Rc<RefCell<ExpressionType>>),
-    Parenthesized(Box<Expression>, Rc<RefCell<ExpressionType>>),
-    Tuple(Vec<ExpressionType>, Rc<RefCell<ExpressionType>>),
-    IfExpression(IfExpr, Rc<RefCell<ExpressionType>>),
-    MatchExpression(MatchExpr, Rc<RefCell<ExpressionType>>),
+    Constant(PathName),
+    Literal(Literal),
+    Call(Call),
+    Return(Option<Box<ExpressionRaw>>),
+    Closure(Closure),
+    Parenthesized(Box<ExpressionRaw>),
+    Tuple(Vec<ExpressionRaw>),
+    IfExpression(IfExpr),
+    MatchExpression(MatchExpr),
     UnaryOperation {
         operator: UnaryOperator,
-        operand: Box<Expression>,
+        operand: Box<ExpressionRaw>,
         start: usize,
         end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
     },
     BinaryOperation {
         operator: BinaryOperator,
-        left: Box<Expression>,
-        right: Box<Expression>,
+        left: Box<ExpressionRaw>,
+        right: Box<ExpressionRaw>,
         start: usize,
         end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
     },
 }
 
-impl Expression {
+impl ExpressionRaw {
     pub fn new_binary(
         operator: BinaryOperator,
-        left: Box<Expression>,
-        right: Box<Expression>,
+        left: Box<ExpressionRaw>,
+        right: Box<ExpressionRaw>,
         start: usize,
         end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
-    ) -> Expression {
-        Expression::BinaryOperation { operator, left, right, start, end, ty }
+    ) -> ExpressionRaw {
+        ExpressionRaw::BinaryOperation { operator, left, right, start, end }
     }
 
     pub fn new_unary<'a>(
         operator: UnaryOperator,
-        operand: Box<Expression>,
+        operand: Box<ExpressionRaw>,
         start: usize,
         end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
-    ) -> Expression {
-        Expression::UnaryOperation { operator, operand, start, end, ty }
-    }
-
-    pub fn new_member_access(
-        object: Box<Expression>,
-        field: String,
-        start: usize,
-        end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
-    ) -> Expression {
-        Expression::MemberAccess { object, field, start, end, ty }
+    ) -> ExpressionRaw {
+        ExpressionRaw::UnaryOperation { operator, operand, start, end }
     }
 }
 
@@ -416,13 +402,13 @@ pub enum Literal {
     String(String),
     Bool(bool),
     Unit,
-    List(Vec<Expression>),
+    List(Vec<ExpressionRaw>),
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Call {
-    pub name: Box<Expression>,
-    pub type_args: Vec<ExpressionType>,
+    pub name: Box<ExpressionRaw>,
+    pub type_args: Vec<Type>,
     pub args: Vec<CallArg>,
     pub start: usize,
     pub end: usize,
@@ -430,8 +416,8 @@ pub struct Call {
 
 impl Call {
     pub fn new(
-        name: Box<Expression>,
-        type_args: Vec<ExpressionType>,
+        name: Box<ExpressionRaw>,
+        type_args: Vec<Type>,
         args: Vec<CallArg>,
         start: usize,
         end: usize,
@@ -443,13 +429,13 @@ impl Call {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct CallArg {
     pub name: Option<String>,
-    pub value: Expression,
+    pub value: ExpressionRaw,
     pub start: usize,
     pub end: usize,
 }
 
 impl CallArg {
-    pub fn new<'a>(name: Option<String>, value: Expression, start: usize, end: usize) -> CallArg {
+    pub fn new<'a>(name: Option<String>, value: ExpressionRaw, start: usize, end: usize) -> CallArg {
         CallArg { name, value, start, end }
     }
 }
@@ -458,7 +444,7 @@ impl CallArg {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Closure {
     pub params: Vec<Param>,
-    pub return_type: Option<Box<ExpressionType>>,
+    pub return_type: Option<Box<Type>>,
     pub body: Vec<Statement>,
     pub start: usize,
     pub end: usize,
@@ -467,13 +453,12 @@ pub struct Closure {
 impl Closure {
     pub fn new(
         params: Vec<Param>,
-        return_type: Option<Box<ExpressionType>>,
+        return_type: Option<Box<Type>>,
         body: Vec<Statement>,
         start: usize,
         end: usize,
-        ty: Rc<RefCell<ExpressionType>>,
-    ) -> Expression {
-        Expression::Closure(Closure { params, return_type, body, start, end }, ty)
+    ) -> ExpressionRaw {
+        ExpressionRaw::Closure(Closure { params, return_type, body, start, end })
     }
 }
 
@@ -521,7 +506,7 @@ impl MatchExpr {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct MatchArm {
     pub pattern: Pattern,
-    pub value: Either<ExpressionType, Vec<Statement>>,
+    pub value: Either<Expression, Vec<Statement>>,
     pub start: usize,
     pub end: usize,
 }
@@ -529,7 +514,7 @@ pub struct MatchArm {
 impl MatchArm {
     pub fn new(
         pattern: Pattern,
-        value: Either<ExpressionType, Vec<Statement>>,
+        value: Either<Expression, Vec<Statement>>,
         start: usize,
         end: usize
     ) -> MatchArm {
@@ -539,12 +524,40 @@ impl MatchArm {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Pattern {
-    Variable(String, Rc<RefCell<ExpressionType>>),
-    Literal(Literal, Rc<RefCell<ExpressionType>>),
-    Tuple(Vec<Pattern>, Rc<RefCell<ExpressionType>>),
+    Wildcard,
+    Variable(String),
+    Literal(Literal),
+    Tuple(Vec<Pattern>),
     Constructor {
         name: PathName,
         fields: Vec<Pattern>,
-        ty: Rc<RefCell<ExpressionType>>,
     },
+}
+
+impl Pattern {
+    pub fn get_bound_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        self.get_bound_names_helper(&mut names);
+        names
+    }
+
+    fn get_bound_names_helper(&self, names: &mut Vec<String>) {
+        match self {
+            Pattern::Wildcard => {}
+            Pattern::Variable(name) => {
+                names.push(name.clone());
+            }
+            Pattern::Literal(_) => {}
+            Pattern::Tuple(patterns) => {
+                for pattern in patterns {
+                    pattern.get_bound_names_helper(names);
+                }
+            }
+            Pattern::Constructor { fields, .. } => {
+                for field in fields {
+                    field.get_bound_names_helper(names);
+                }
+            }
+        }
+    }
 }

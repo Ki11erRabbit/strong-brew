@@ -1,7 +1,6 @@
-use petgraph::adj::NodeIndex;
 use petgraph::algo;
 use petgraph::graph::UnGraph;
-use sb_ast::core_annotated::{self, BuiltinType, Enum, Expression, Import, PathName, TopLevelStatement, Type};
+use sb_ast::core_annotated::{self, BuiltinType, Call, CallArg, Enum, Expression, ExpressionRaw, Field, Import, Literal, PathName, Pattern, TopLevelStatement, Type};
 use sb_ast::core_lang;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -9,36 +8,43 @@ use std::cell::RefCell;
 
 
 pub enum TypeError {
-
+    TypeDoesNotExist(Vec<String>, usize, usize),
+    PatternTypeMismatch(String),
+    ParameterizedTypeWithoutName(usize, usize),
 }
 
 fn generate_internal_globals() -> HashMap<Vec<String>, Rc<RefCell<Type>>> {
     let mut globals = HashMap::new();
     globals.insert(vec!["nat", "Zero"].into_iter().map(|x| x.to_string()).collect(),
-                   Rc::new(RefCell::new(Expression::Type(
+                   Rc::new(RefCell::new(
                            Type::Builtin(BuiltinType::Function {
                                params: vec![],
-                               return_type: Box::new(
-                                       Expression::Type(Type::Builtin(BuiltinType::Nat))),
+                               return_type: Box::new(Type::Builtin(BuiltinType::Nat)),
                            }),
-                       ))));
+                       )));
     globals.insert(vec!["nat", "Succ"].into_iter().map(|x| x.to_string()).collect(),
-                   Rc::new(RefCell::new(ExpressionType::new(
-                       Expression::Type(
+                   Rc::new(RefCell::new(
                            Type::Builtin(BuiltinType::Function {
                                params: vec![
-                                       Expression::Type(Type::Builtin(BuiltinType::Nat))
+                                       Type::Builtin(BuiltinType::Nat)
                                ],
                                return_type: Box::new(
-                                       Expression::Type(Type::Builtin(BuiltinType::Nat)))
+                                       Type::Builtin(BuiltinType::Nat))
                            }),
-                       )))));
+                       )));
 
 
 
     globals
 }
 
+fn create_constructor_type(fields: Vec<Field>, return_type: Type) -> Type {
+    let fields = fields.into_iter().map(|x| x.ty).collect();
+    Type::Builtin(BuiltinType::Function {
+        params: fields,
+        return_type: Box::new(return_type),
+    })
+}
 
 pub struct TypeChecker<'a> {
     overloads: HashMap<&'a str, Vec<&'a Vec<String>>>,
@@ -140,8 +146,8 @@ impl <'a> TypeChecker<'a> {
 
         let imports = Self::convert_imports(imports);
         let enums = self.check_enums(enums)?;
-        let functions = self.check_functions(functions)?;
         let consts = self.check_consts(consts)?;
+        let functions = self.check_functions(functions)?;
 
         let mut decl = imports;
         decl.extend(enums);
@@ -232,8 +238,10 @@ impl <'a> TypeChecker<'a> {
         let pairs = generic_params
             .iter()
             .map(|x| {
-                let (p, (name, ty)) = self.convert_generic_parameter(x)?;
-                self.add_local_type(&vec![name], Rc::new(RefCell::new(ty.clone())));
+                let (p, (names, ty)) = self.convert_generic_parameter(x)?;
+                for name in names {
+                    self.add_local_type(&vec![name], Rc::new(RefCell::new(ty.clone())));
+                }
                 Ok((p, ty))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -245,40 +253,51 @@ impl <'a> TypeChecker<'a> {
             generic_args.push(ty);
         }
 
-        let variants = self.check_variants(variants)?;
-
-        self.pop_local_scope();
-
-        if generic_params.is_empty() {
+        let ty = if generic_params.is_empty() {
+            let ty = Type::User(PathName::new(vec![name], *start, *end));
             self.add_global_type(&vec![name], Rc::new(RefCell::new(
                 Type::User(PathName::new(vec![name], *start, *end)),
             )));
+            ty
         } else {
             let args = generic_args.into_iter().map(|x| {
-                let Expression::Type(ty) = x else {
-                    unreachable!("Generic arguments should be types")
-                };
-                ty
+                x
             }).collect();
 
-            let ty = Expression::Type(
-                    Type::Parameterized(
+            let ty = Type::Parameterized(
                         Box::new(Type::User(PathName::new(vec![name], *start, *end))),
                         args,
-                    ));
-            let ty = Rc::new(RefCell::new(ty));
-            self.add_global_type(&vec![name], ty);
-        }
+            );
+
+            let rc_ty = Rc::new(RefCell::new(ty.clone()));
+            self.add_global_type(&vec![name], rc_ty);
+            ty
+        };
+
+        let variants = self.check_variants(variants, ty, name)?;
+
+        self.pop_local_scope();
 
         
         Ok(Enum::new(visibility, name, generic_params, variants, *start, *end))
     }
 
-    fn check_variants(&mut self, variants: &Vec<core_lang::Variant<'a>>) -> Result<Vec<core_annotated::Variant>, TypeError> {
+    fn check_variants(
+        &mut self,
+        variants: &Vec<core_lang::Variant<'a>>,
+        enum_type: Type,
+        enum_name: &str
+    ) -> Result<Vec<core_annotated::Variant>, TypeError> {
         let mut result = Vec::new();
         for variant in variants {
             let core_lang::Variant { name, fields, start, end } = variant;
             let fields = fields.iter().map(|x| self.check_field(x)).collect::<Result<Vec<_>, _>>()?;
+
+            let constructor_type = create_constructor_type(fields.clone(), enum_type.clone());
+
+            self.add_global_type(&vec![enum_name, name], Rc::new(RefCell::new(constructor_type)));
+            
+            
             result.push(core_annotated::Variant::new(name, fields, *start, *end));
         }
         Ok(result)
@@ -294,38 +313,65 @@ impl <'a> TypeChecker<'a> {
     fn convert_generic_parameter(
         &mut self,
         param: &core_lang::GenericParam<'a>
-    ) -> Result<(core_annotated::GenericParam, (String, core_annotated::ExpressionType)), TypeError> {
+    ) -> Result<(core_annotated::GenericParam, (Vec<String>, Type)), TypeError> {
         let core_lang::GenericParam { name, constraint, start, end } = param;
-        let constraint = constraint.map(|x| self.does_type_exist_type(x)).transpose()?;
+        let constraint = constraint.as_ref().map(|x| self.does_type_exist_type(&x)).transpose()?;
 
 
         let ty = constraint.unwrap_or_else(|| {
-            Expression::Type(Type::Builtin(BuiltinType::Type))
+            Type::Builtin(BuiltinType::Type)
         });
 
-        let (pattern, name) = self.does_type_match(name, &ty)?;
+        let pattern = self.convert_pattern(name)?;
+        let bound_names = pattern.get_bound_names();
         
-        let param = core_annotated::GenericParam::new(pattern, constraint, *start, *end);
+        let param = core_annotated::GenericParam::new(pattern, Some(ty.clone()), *start, *end);
         
-
-        Ok((param, (name, ty)))
+        Ok((param, (bound_names, ty)))
     }
 
-    fn does_type_exist(&self, ty: &core_lang::Type<'a>) -> Result<core_annotated::Type, TypeError> {
+    fn does_type_exist(&mut self, ty: &core_lang::Type<'a>) -> Result<core_annotated::Type, TypeError> {
         let ty = self.convert_type(ty)?;
 
+        match ty {
+            Type::User(PathName { segments, start, end }) => {
+                if let Some(ty) = self.get_type(&segments) {
+                    return Ok(ty.borrow().clone());
+                }
+                Err(TypeError::TypeDoesNotExist(segments, start, end))
+            }
+            ty => Ok(ty),
+        }
+    }
+
+    fn does_type_exist_annotated(&mut self, ty: Type) -> Result<core_annotated::Type, TypeError> {
+        match ty {
+            Type::User(PathName { segments, start, end }) => {
+                if let Some(ty) = self.get_type(&segments) {
+                    return Ok(ty.borrow().clone());
+                }
+                Err(TypeError::TypeDoesNotExist(segments, start, end))
+            }
+            ty => Ok(ty),
+        }
+    }
+
+    fn does_type_exist_type(&mut self, ty: &core_lang::ExpressionType<'a>) -> Result<core_annotated::Type, TypeError> {
+
+        let core_lang::ExpressionType { expression, variadic } = ty;
+        let ty = self.reduce_to_type(expression)?;
+        let ty = self.does_type_exist_annotated(ty)?;
+
+        if *variadic {
+            let ty = Type::Parameterized(Box::new(
+                Type::User(PathName::new(vec!["Array"], 0, 0))), vec![ty]);
+            return Ok(ty);
+        }
 
         Ok(ty)
     }
 
-    fn does_type_exist_type(&self, ty: &core_lang::ExpressionType<'a>) -> Result<core_annotated::Type, TypeError> {
-        let ty = self.convert_type(ty)?;
-
-
-        Ok(ty)
-    }
-
-    fn convert_type(&self, ty: &core_lang::Type<'a>) -> Result<core_annotated::Type, TypeError> {
+    fn convert_type(&mut self, ty: &core_lang::Type) -> Result<core_annotated::Type, TypeError> {
         let ty = match ty {
             core_lang::Type::Builtin(builtin) => {
                 let ty = match builtin {
@@ -350,11 +396,12 @@ impl <'a> TypeChecker<'a> {
                         BuiltinType::Function { params, return_type: Box::new(return_type) }
                     }
                     
-                }
+                };
+                Type::Builtin(ty)
             }
             core_lang::Type::User(path) => {
                 let core_lang::PathName { segments, start, end } = path;
-                let segments = segments.iter().map(|x| x.to_string()).collect();
+                let segments = segments.clone();
                 Type::User(PathName::new(segments, *start, *end))
             }
             core_lang::Type::Parameterized(main, exprs) => {
@@ -362,9 +409,226 @@ impl <'a> TypeChecker<'a> {
                 let exprs = exprs.iter()
                     .map(|x| self.reduce_to_type(x))
                     .collect::<Result<Vec<_>, _>>()?;
-                
+                Type::Parameterized(main, exprs)
             }
+        };
+        Ok(ty)
+    }
 
+    fn reduce_to_type_expression_type(&mut self, expr: &core_lang::ExpressionType) -> Result<Type, TypeError> {
+
+        let core_lang::ExpressionType { expression, variadic } = expr;
+
+        let ty = match expression {
+            core_lang::Expression::Type(ty) => {
+                self.convert_type(ty)?
+            }
+            _ => {
+                todo!("have the typechecker reduce expressions to types")
+            }
+        };
+
+        if *variadic {
+            let ty = Type::Parameterized(Box::new(
+                Type::User(PathName::new(vec!["Array"], 0, 0))), vec![ty]);
+            return Ok(ty);
+        }
+        Ok(ty)
+    }
+    
+    fn reduce_to_type(&mut self, expr: &core_lang::Expression) -> Result<Type, TypeError> {
+
+        match expr {
+            core_lang::Expression::Type(ty) => {
+                self.convert_type(ty)
+            }
+            _ => {
+                todo!("have the typechecker reduce expressions to types")
+            }
+        }
+    }
+
+    fn convert_pattern(
+        &mut self,
+        name: &core_lang::Pattern,
+    ) -> Result<core_annotated::Pattern, TypeError> {
+        match name {
+            core_lang::Pattern::Variable(var) => {
+                match *var {
+                    "_" => {
+                        return Ok(core_annotated::Pattern::Wildcard);
+                    }
+                    _ => {}
+                }
+                Ok(core_annotated::Pattern::Variable(var.to_string()))
+            }
+            core_lang::Pattern::Literal(lit) => {
+                let lit = self.convert_literal(lit)?;
+                Ok(core_annotated::Pattern::Literal(lit))
+            }
+            core_lang::Pattern::Tuple(patterns) => {
+                let patterns = patterns.iter().map(|x| self.convert_pattern(x)).collect::<Result<Vec<_>, _>>()?;
+                Ok(core_annotated::Pattern::Tuple(patterns))
+            }
+            core_lang::Pattern::Constructor { name, fields } => {
+                let core_lang::PathName { segments, start, end } = name;
+                let segments = segments.clone();
+                let name = PathName::new(segments, *start, *end);
+                let fields = fields.iter().map(|x| self.convert_pattern(x)).collect::<Result<Vec<_>, _>>()?;
+                Ok(core_annotated::Pattern::Constructor { name, fields })
+            }
+        }
+    }
+    
+
+    fn convert_literal(&mut self, lit: &core_lang::Literal) -> Result<Literal, TypeError> {
+        match lit {
+            core_lang::Literal::Bool(b) => Ok(Literal::Bool(*b)),
+            core_lang::Literal::Float(f) => Ok(Literal::Float(f.to_string())),
+            core_lang::Literal::Int(i) => Ok(Literal::Int(i.to_string())),
+            core_lang::Literal::Char(c) => Ok(Literal::Char(c.to_string())),
+            core_lang::Literal::String(s) => Ok(Literal::String(s.to_string())),
+            core_lang::Literal::Unit => Ok(Literal::Unit),
+            core_lang::Literal::List(l) => {
+                let l = l.iter().map(|x| self.convert_expression(x)).collect::<Result<Vec<_>, _>>()?;
+                Ok(Literal::List(l))
+            }
+        }
+    }
+
+    fn get_literal_type(&mut self, lit: &Literal) -> Type {
+        match lit {
+            Literal::Bool(_) => Type::Builtin(BuiltinType::Bool),
+            Literal::Float(_) => Type::PossibleType(vec![
+                Type::Builtin(BuiltinType::F32),
+                Type::Builtin(BuiltinType::F64),
+            ]),
+            Literal::Int(_) => Type::PossibleType(vec![
+                Type::Builtin(BuiltinType::Int),
+                Type::Builtin(BuiltinType::I8),
+                Type::Builtin(BuiltinType::I16),
+                Type::Builtin(BuiltinType::I32),
+                Type::Builtin(BuiltinType::I64),
+                Type::Builtin(BuiltinType::Nat),
+                Type::Builtin(BuiltinType::F32),
+                Type::Builtin(BuiltinType::F64),
+            ]),
+            Literal::Char(_) => Type::Builtin(BuiltinType::Char),
+            Literal::String(_) => Type::User(PathName::new(vec!["String"], 0, 0)),
+            Literal::Unit => Type::Builtin(BuiltinType::Unit),
+            Literal::List(_) => {
+                todo!("check for overloads of create[]");
+            }
+        }
+    }
+
+    fn convert_consts(&mut self, consts: Vec<&core_lang::TopLevelStatement>) -> Result<Vec<TopLevelStatement>, TypeError> {
+        consts.iter().map(|x| match x {
+            core_lang::TopLevelStatement::Const(x) => {
+                let core_lang::Const { visibility, name, ty, value, start, end } = x;
+                let core_lang::PathName { segments, start: tstart, end: tend } = name;
+                let name = PathName::new(segments.clone(), *tstart, *tend);
+                let visibility = Self::convert_visibility(visibility);
+                let ty = self.does_type_exist_type(ty)?;
+                let value = self.convert_expression(value)?;
+
+                self.check_expressions_type(&value, &ty)?;
+
+                self.add_global_type(&segments, Rc::new(RefCell::new(ty.clone())));
+                
+                Ok(core_annotated::Const::new(visibility, name, ty, value, *start, *end))
+            }
+            _ => unreachable!(),
+        }).collect()
+    }
+
+    fn convert_expression_type(&mut self, expr: &core_lang::ExpressionType) -> Result<ExpressionRaw, TypeError> {
+        let core_lang::ExpressionType { expression, variadic } = expr;
+        let expr = self.convert_expression(expression)?;
+
+        if *variadic {
+            match expr {
+                ExpressionRaw::Type(ty) => {
+                    return Ok(ExpressionRaw::Type(Type::Parameterized(Box::new(Type::User(PathName::new(vec!["Array"], 0, 0))), vec![ty])));
+                }
+                _ => {}
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn convert_expression(
+        &mut self,
+        expr: &core_lang::Expression
+    ) -> Result<ExpressionRaw, TypeError> {
+
+        match expr {
+            core_lang::Expression::Type(ty) => {
+                let ty = self.convert_type(ty)?;
+                Ok(ExpressionRaw::Type(ty))
+            }
+            core_lang::Expression::Literal(lit) => {
+                let lit = self.convert_literal(lit)?;
+                Ok(ExpressionRaw::Literal(lit))
+            }
+            core_lang::Expression::Variable(var) => {
+                let core_lang::PathName { segments, start, end } = var;
+                let segments = segments.clone();
+                let name = PathName::new(segments, *start, *end);
+                Ok(ExpressionRaw::Variable(name))
+            }
+            core_lang::Expression::Constant(constant) => {
+                let core_lang::PathName { segments, start, end } = constant;
+                let segments = segments.clone();
+                let name = PathName::new(segments, *start, *end);
+                Ok(ExpressionRaw::Constant(name))
+            }
+            core_lang::Expression::Call(call) => {
+                let core_lang::Call { name, type_args, args, start, end } = call;
+                let function = self.convert_expression(name)?;
+                let type_args = type_args.iter().map(|x| self.reduce_to_type_expression_type(x)).collect::<Result<Vec<_>, _>>()?;
+                let args = args.iter().map(|x| {
+                    let core_lang::CallArg { name, value, start, end } = x;
+                    let name = name.map(|x| x.to_string());
+                    let value = self.convert_expression(value)?;
+                    Ok(CallArg::new(name, value, *start, *end))
+                }).collect::<Result<Vec<_>, _>>()?;
+                Ok(ExpressionRaw::Call(Call::new(Box::new(function), type_args,  args, *start, *end)))
+            }
+            core_lang::Expression::Return(expr) => {
+                let expr = expr.map(|x| {
+                    match self.convert_expression(&x) {
+                        Ok(x) => Ok(Box::new(x)),
+                        Err(e) => Err(e),
+                    }
+                }).transpose()?;
+                Ok(ExpressionRaw::Return(expr))
+            }
+            core_lang::Expression::Closure(closure) => {
+                todo!("convert closures")
+            }
+            core_lang::Expression::Parenthesized(expr) => {
+                let expr = self.convert_expression(expr)?;
+                Ok(ExpressionRaw::Parenthesized(Box::new(expr)))
+            }
+            core_lang::Expression::Tuple(exprs) => {
+                let exprs = exprs.iter().map(|x| self.convert_expression_type(&x)).collect::<Result<Vec<_>, _>>()?;
+                Ok(ExpressionRaw::Tuple(exprs))
+            }
+            core_lang::Expression::IfExpression(if_) => {
+                todo!("convert if")
+            }
+            core_lang::Expression::MatchExpression(match_) => {
+                todo!("convert match")
+            }
+            core_lang::Expression::UnaryOperation { operator, operand, start, end } => {
+                todo!("convert unary operation")
+            }
+            core_lang::Expression::BinaryOperation { operator, left, right, start, end } => {
+                todo!("convert binary operation")
+            }
+            
         }
     }
 }
