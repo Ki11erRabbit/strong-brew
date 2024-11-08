@@ -1,0 +1,34 @@
+module core::data::linkedlist;
+
+import core::data::maybe;
+
+pub enum Linkedlist[T: type] {
+    Cons(car: T, cdr: Linkedlist[T]),
+    Nil
+}
+
+pub total extern "Java" fn Linkedlist::(create[])[T](items: ...T) -> Linkedlist[T] = "
+    items = items.reverse();
+    Linkedlist<T> cell = new Nil();
+    for (T item: items) {
+        cell = new Cons(item, cell);
+    }
+    return cell;
+"
+
+pub total fn Linkedlist::(get[])[T](list: Linkedlist[T], index: nat) -> Maybe[T] = {
+    match index {
+        nat::Zero() -> {
+            match list {
+                Linkedlist::Cons(item, _) -> return Maybe::Just(item),
+                Linkedlist::Nil() -> return Maybe::Nothing,
+            }
+        }
+        nat::Succ(pred) -> {
+            match list {
+                Linkedlist::Cons(_, rest) -> return Maybe::Just(rest[pred]),
+                Linkedlist::Nil() -> return Maybe::Nothing,
+            }
+        }
+    }
+}
