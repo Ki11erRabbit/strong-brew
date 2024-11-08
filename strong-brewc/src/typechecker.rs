@@ -1,13 +1,13 @@
 use petgraph::algo;
 use petgraph::graph::UnGraph;
-use sb_ast::core_annotated::{self, BuiltinType, Call, CallArg, Enum, Expression, ExpressionRaw, Field, Import, Literal, PathName, Pattern, TopLevelStatement, Type};
+use sb_ast::core_annotated::{self, BuiltinType, Call, CallArg, Enum, Expression, ExpressionRaw, Field, Function, Import, Literal, Param, PathName, TopLevelStatement, Type};
 use sb_ast::core_lang;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::cell::RefCell;
 use either::Either;
 
-
+#[derive(Debug)]
 pub enum TypeError {
     TypeDoesNotExist(Vec<String>, usize, usize),
     PatternTypeMismatch(String),
@@ -35,6 +35,10 @@ fn generate_internal_globals() -> HashMap<Vec<String>, Rc<RefCell<Type>>> {
                                        Type::Builtin(BuiltinType::Nat))
                            }),
                        )));
+    globals.insert(vec!["String"].into_iter().map(|x| x.to_string()).collect(),
+                   Rc::new(RefCell::new(
+                           Type::User(PathName::new(vec!["String"], 0, 0)),
+                       )));
 
 
 
@@ -49,11 +53,20 @@ fn create_constructor_type(fields: Vec<Field>, return_type: Type) -> Type {
     })
 }
 
+fn create_function_type(params: Vec<Param>, return_type: Type) -> Type {
+    let params = params.into_iter().map(|x| x.ty).collect();
+    Type::Builtin(BuiltinType::Function {
+        params,
+        return_type: Box::new(return_type),
+    })
+}
+
 pub struct TypeChecker<'a> {
     overloads: HashMap<&'a str, Vec<&'a Vec<String>>>,
     global_types: HashMap<Vec<String>, Rc<RefCell<Type>>>,
     local_types: Vec<HashMap<Vec<String>, Rc<RefCell<Type>>>>,
     seen_files: HashSet<String>,
+    current_return_type: Option<Type>,
 }
 
 impl <'a> TypeChecker<'a> {
@@ -63,6 +76,7 @@ impl <'a> TypeChecker<'a> {
             global_types: generate_internal_globals(),
             local_types: Vec::new(),
             seen_files: HashSet::new(),
+            current_return_type: None,
         }
     }
 
@@ -86,11 +100,25 @@ impl <'a> TypeChecker<'a> {
         self.local_types.pop();
     }
 
+    pub fn get_return_type(&self) -> Option<Type> {
+        self.current_return_type.clone()
+    }
+
+    pub fn set_return_type(&mut self, ty: Type) {
+        self.current_return_type = Some(ty);
+    }
+
+    pub fn unset_return_type(&mut self) {
+        self.current_return_type = None;
+    }
+
     pub fn get_type<S>(&self, name: &Vec<S>) -> Option<Rc<RefCell<Type>>>
     where S: AsRef<str> {
         let name: Vec<String> = name.into_iter().map(|x| x.as_ref().to_string()).collect();
-        if let Some(ty) = self.local_types.last().unwrap().get(&name) {
-            return Some(ty.clone());
+        if let Some(scope) = self.local_types.last() {
+            if let Some(ty) = scope.get(&name) {
+                return Some(ty.clone());
+            }
         }
         self.global_types.get(&name).map(|ty| ty.clone())
     }
@@ -102,24 +130,25 @@ impl <'a> TypeChecker<'a> {
         }
     }
 
-    pub fn check_files(
+    pub fn check_files<S>(
         &mut self,
-        files: &'a Vec<(&'a str, core_lang::File<'a>)>
-    ) -> Result<Vec<core_annotated::File>, TypeError> {
+        files: &[(S, core_lang::File)]
+    ) -> Result<Vec<core_annotated::File>, TypeError>
+    where S: AsRef<str> {
         let mut result = Vec::new();
         for (name, file) in files {
-            if self.seen_files.contains(*name) {
+            if self.seen_files.contains(name.as_ref()) {
                 continue;
             }
-            result.push(self.check_file(name, file)?);
+            result.push(self.check_file(name.as_ref(), file)?);
         }
         Ok(result)
     }
     
     fn check_file(
         &mut self,
-        name: &'a str,
-        file: &'a core_lang::File<'a>
+        name: &str,
+        file: &core_lang::File
     ) -> Result<core_annotated::File, TypeError> {
         let core_lang::PathName { segments, start, end } = &file.path;
         let path = PathName::new(segments.clone(), *start, *end);
@@ -164,7 +193,7 @@ impl <'a> TypeChecker<'a> {
         Ok(file)
     }
 
-    fn convert_imports(imports: Vec<&core_lang::TopLevelStatement<'a>>) -> Vec<TopLevelStatement> {
+    fn convert_imports(imports: Vec<&core_lang::TopLevelStatement>) -> Vec<TopLevelStatement> {
         imports.iter().map(|x| match x {
             core_lang::TopLevelStatement::Import(x) => {
                 let core_lang::Import { path, start: istart, end: iend } = x;
@@ -177,7 +206,7 @@ impl <'a> TypeChecker<'a> {
     }
 
 
-    fn check_enums(&mut self, enums: Vec<&core_lang::TopLevelStatement<'a>>) -> Result<Vec<TopLevelStatement>, TypeError> {
+    fn check_enums(&mut self, enums: Vec<&core_lang::TopLevelStatement>) -> Result<Vec<TopLevelStatement>, TypeError> {
         let mut result = Vec::new();
 
         let mut names_to_positions = HashMap::new();
@@ -211,7 +240,9 @@ impl <'a> TypeChecker<'a> {
 
         let nodes = nodes.into_iter().flatten().map(|x| x.index()).collect::<Vec<usize>>();
 
-        let mut enums = enums.into_iter().map(Some).collect::<Vec<Option<&core_lang::TopLevelStatement<'a>>>>();
+        let mut enums = enums.into_iter()
+            .map(Some)
+            .collect::<Vec<Option<&core_lang::TopLevelStatement>>>();
 
         for node in nodes {
             let enum_ = enums[node].take().unwrap();
@@ -225,7 +256,7 @@ impl <'a> TypeChecker<'a> {
         Ok(result)
     }
 
-    fn check_enum(&mut self, enum_: &core_lang::Enum<'a>) -> Result<TopLevelStatement, TypeError> {
+    fn check_enum(&mut self, enum_: &core_lang::Enum) -> Result<TopLevelStatement, TypeError> {
         let core_lang::Enum {
             visibility,
             name,
@@ -287,7 +318,7 @@ impl <'a> TypeChecker<'a> {
 
     fn check_variants(
         &mut self,
-        variants: &Vec<core_lang::Variant<'a>>,
+        variants: &Vec<core_lang::Variant>,
         enum_type: Type,
         enum_name: &str
     ) -> Result<Vec<core_annotated::Variant>, TypeError> {
@@ -306,7 +337,7 @@ impl <'a> TypeChecker<'a> {
         Ok(result)
     }
 
-    fn check_field(&mut self, field: &core_lang::Field<'a>) -> Result<core_annotated::Field, TypeError> {
+    fn check_field(&mut self, field: &core_lang::Field) -> Result<core_annotated::Field, TypeError> {
         let core_lang::Field { visibility, name, ty, start, end } = field;
         let visibility = Self::convert_visibility(visibility);
         let ty = self.does_type_exist_type(ty)?;
@@ -315,7 +346,7 @@ impl <'a> TypeChecker<'a> {
 
     fn convert_generic_parameter(
         &mut self,
-        param: &core_lang::GenericParam<'a>
+        param: &core_lang::GenericParam
     ) -> Result<(core_annotated::GenericParam, (Vec<String>, Type)), TypeError> {
         let core_lang::GenericParam { name, constraint, start, end } = param;
         let constraint = constraint.as_ref().map(|x| self.does_type_exist_type(&x)).transpose()?;
@@ -753,5 +784,180 @@ impl <'a> TypeChecker<'a> {
             }
 
         }
+    }
+
+    fn check_functions(&mut self, functions: Vec<&core_lang::TopLevelStatement>) -> Result<Vec<TopLevelStatement>, TypeError> {
+        let mut result = Vec::new();
+
+        for function in functions {
+            let core_lang::TopLevelStatement::Function(function) = function else {
+                unreachable!("Encountered a non-function after filtering only functions")
+            };
+            result.push(self.check_function(function)?);
+        }
+
+        Ok(result)
+    }
+
+    fn check_function(&mut self, function: &core_lang::Function) -> Result<TopLevelStatement, TypeError> {
+        match function {
+            core_lang::Function::Regular {
+                visibility,
+                name,
+                generic_params,
+                params,
+                return_type,
+                body,
+                start,
+                end
+            } => {
+                let visibility = Self::convert_visibility(&visibility);
+                let core_lang::PathName { segments, start: nstart, end: nend } = name;
+                let name = PathName::new(segments.clone(), *nstart, *nend);
+                let pairs = generic_params
+                    .iter()
+                    .map(|x| {
+                        let (p, (names, ty)) = self.convert_generic_parameter(x)?;
+                        for name in names {
+                            self.add_local_type(&vec![name], Rc::new(RefCell::new(ty.clone())));
+                        }
+                        Ok((p, ty))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let mut generic_params = Vec::new();
+                let mut generic_args = Vec::new();
+                for (param, ty) in pairs {
+                    generic_params.push(param);
+                    generic_args.push(ty);
+                }
+                self.push_local_scope();
+
+                let params = params.iter().map(|x| {
+                    let core_lang::Param { implicit, name, ty, start, end } = x;
+                    let ty = self.does_type_exist_type(ty)?;
+                    self.add_local_type(&vec![name], Rc::new(RefCell::new(ty.clone())));
+                    Ok(core_annotated::Param::new(*implicit, name, ty, *start, *end))
+                }).collect::<Result<Vec<_>, _>>()?;
+
+                let return_type = self.does_type_exist_type(&return_type)?;
+
+                self.set_return_type(return_type.clone());
+
+                self.add_global_type(&segments, Rc::new(RefCell::new(
+                    create_function_type(
+                        params.clone(),
+                        return_type.clone(),
+                    )
+                )));
+                
+
+                let body = self.check_statements(body)?;
+
+                self.pop_local_scope();
+                self.unset_return_type();
+
+                Ok(core_annotated::Function::new(
+                    visibility,
+                    name,
+                    generic_params,
+                    params,
+                    return_type,
+                    body,
+                    *start,
+                    *end,
+                ))
+            }
+            core_lang::Function::Extern {
+                visibility,
+                language,
+                name,
+                generic_params,
+                params,
+                return_type,
+                body,
+                start,
+                end
+            } => {
+                let visibility = Self::convert_visibility(&visibility);
+                let core_lang::PathName { segments, start: nstart, end: nend } = name;
+                let name = PathName::new(segments.clone(), *nstart, *nend);
+                let pairs = generic_params
+                    .iter()
+                    .map(|x| {
+                        let (p, (names, ty)) = self.convert_generic_parameter(x)?;
+                        for name in names {
+                            self.add_local_type(&vec![name], Rc::new(RefCell::new(ty.clone())));
+                        }
+                        Ok((p, ty))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let mut generic_params = Vec::new();
+                let mut generic_args = Vec::new();
+                for (param, ty) in pairs {
+                    generic_params.push(param);
+                    generic_args.push(ty);
+                }
+
+                let params = params.iter().map(|x| {
+                    let core_lang::Param { implicit, name, ty, start, end } = x;
+                    let ty = self.does_type_exist_type(ty)?;
+                    Ok(core_annotated::Param::new(*implicit, name, ty, *start, *end))
+                }).collect::<Result<Vec<_>, _>>()?;
+
+                let return_type = self.does_type_exist_type(&return_type)?;
+
+                Ok(core_annotated::Function::new_extern(
+                    visibility,
+                    language,
+                    name,
+                    generic_params,
+                    params,
+                    return_type,
+                    body,
+                    *start,
+                    *end,
+                ))
+            }
+        }
+    }
+
+    fn check_statements(&mut self, statements: &Vec<core_lang::Statement>) -> Result<Vec<core_annotated::Statement>, TypeError> {
+        statements.into_iter().map(|x| self.check_statement(x)).collect()
+    }
+
+    fn check_statement(&mut self, statement: &core_lang::Statement) -> Result<core_annotated::Statement, TypeError> {
+        match statement {
+            core_lang::Statement::Assignment { target, value, start, end } => {
+                todo!("Possibly remove assignments from core_lang")
+            }
+            core_lang::Statement::Expression(expr) => {
+                let expr = self.convert_expression_type(&expr)?;
+
+                let expr = self.check_expressions_type(expr, &Type::Builtin(BuiltinType::Unit))?;
+                Ok(core_annotated::Statement::Expression(expr))
+            }
+            core_lang::Statement::Let { name, ty, value, start, end } => {
+
+                let ty = self.does_type_exist_type(&ty)?;
+                let value = self.convert_expression_type(&value)?;
+
+                let value = self.check_expressions_type(value, &ty)?;
+
+                let pattern = self.convert_pattern(&name)?;
+
+                // TODO: destructure expression and check that the types match
+                let bound_names = pattern.get_bound_names();
+
+                for name in bound_names {
+                    self.add_local_type(&vec![name], Rc::new(RefCell::new(ty.clone())));
+                }
+
+                Ok(core_annotated::Statement::new_let(pattern, ty, value, *start, *end))
+            }
+
+        }
+
     }
 }

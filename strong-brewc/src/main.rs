@@ -21,7 +21,16 @@ fn main() {
     let file = file.unwrap();
     println!("Desugaring Ast");
     let file = sb_ast::convert_inner_to_core(file);
-    println!("Printing Ast");
-    println!("{:#?}", file);
+    println!("Typechecking Ast");
+
+    let mut typechecker = typechecker::TypeChecker::new();
+    let files = typechecker.check_files(&vec![(&args[1], file)]);
+    if let Err(_) = files {
+        std::process::exit(1);
+    }
+    let files = files.unwrap();
+    for file in files {
+        println!("{:#?}", file);
+    }
 
 }
