@@ -189,7 +189,6 @@ impl <'a> TypeChecker<'a> {
 
 
         let file = core_annotated::File::new(path, decl);
-
         
         Ok(file)
     }
@@ -237,9 +236,17 @@ impl <'a> TypeChecker<'a> {
 
         let graph = UnGraph::<u32, ()>::from_edges(&edges);
 
-        let nodes = algo::kosaraju_scc(&graph);
+        let nodes = algo::toposort(&graph, None).unwrap();
 
-        let nodes = nodes.into_iter().flatten().map(|x| x.index()).collect::<Vec<usize>>();
+        let nodes = nodes.into_iter().map(|x| x.index()).collect::<Vec<usize>>();
+
+        //let nodes = nodes.into_iter().flatten().map(|x| x.index()).collect::<Vec<usize>>();
+
+        let nodes = if nodes.len() < enums.len() {
+            (0..enums.len()).collect::<Vec<usize>>()
+        } else {
+            nodes
+        };
 
         let mut enums = enums.into_iter()
             .map(Some)

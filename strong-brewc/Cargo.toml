@@ -6,5 +6,6 @@ edition = "2021"
 [dependencies]
 parser = { workspace = true }
 sb_ast = { workspace = true }
+backend = { workspace = true }
 petgraph = "0.6.5"
 either = "1.13.0"

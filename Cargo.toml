@@ -2,9 +2,10 @@
 resolver = "2"
 
 
-members = ["parser", "sb_ast", "strong-brewc", "tests"]
+members = [ "backend","parser", "sb_ast", "strong-brewc", "tests"]
 
 
 [workspace.dependencies]
 parser = { path = "parser" }
 sb_ast = { path = "sb_ast" }
+backend = { path = "backend" }

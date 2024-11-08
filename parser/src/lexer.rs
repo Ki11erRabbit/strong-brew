@@ -530,7 +530,7 @@ impl<'a> TokenLexer<'a> {
                 if !found_end {
                     return Err(SpannedLexerError::new(LexerError::UnclosedCharLiteral, start, end));
                 }
-                let lit = &self.input[start..end];
+                let lit = &self.input[start + 1..end - 1];
                 Ok(SpannedToken::new(Token::CharLiteral(lit), start, end))
             }
             '"' => {
@@ -553,7 +553,7 @@ impl<'a> TokenLexer<'a> {
                 if !found_end {
                     return Err(SpannedLexerError::new(LexerError::UnclosedStringLiteral, start, end));
                 }
-                let lit = &self.input[start..end];
+                let lit = &self.input[start + 1..end - 1];
                 Ok(SpannedToken::new(Token::StringLiteral(lit), start, end))
             }
             '\n' => {

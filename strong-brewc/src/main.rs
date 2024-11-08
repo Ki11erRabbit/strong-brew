@@ -1,5 +1,8 @@
 mod typechecker;
 
+use backend::JavaCodegenerator;
+use backend::Codegenerator;
+
 
 fn main() {
 
@@ -29,8 +32,10 @@ fn main() {
         std::process::exit(1);
     }
     let files = files.unwrap();
+    let mut code_generator = JavaCodegenerator::new();
     for file in files {
-        println!("{:#?}", file);
+        let code = code_generator.generate(file);
+        println!("{}", code);
     }
 
 }
