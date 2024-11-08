@@ -316,6 +316,12 @@ pub struct Expression {
     pub ty: Rc<RefCell<Type>>,
 }
 
+impl Expression {
+    pub fn new(raw: ExpressionRaw, ty: &Type) -> Expression {
+        Expression { raw, ty: Rc::new(RefCell::new(ty.clone())) }
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum ExpressionRaw {
@@ -326,10 +332,10 @@ pub enum ExpressionRaw {
     Constant(PathName),
     Literal(Literal),
     Call(Call),
-    Return(Option<Box<ExpressionRaw>>),
+    Return(Option<Either<Box<ExpressionRaw>, Box<Expression>>>),
     Closure(Closure),
-    Parenthesized(Box<ExpressionRaw>),
-    Tuple(Vec<ExpressionRaw>),
+    Parenthesized(Either<Box<ExpressionRaw>, Box<Expression>>),
+    Tuple(Either<Vec<ExpressionRaw>, Vec<Expression>>),
     IfExpression(IfExpr),
     MatchExpression(MatchExpr),
     UnaryOperation {
@@ -429,13 +435,13 @@ impl Call {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct CallArg {
     pub name: Option<String>,
-    pub value: ExpressionRaw,
+    pub value: Either<ExpressionRaw, Expression>,
     pub start: usize,
     pub end: usize,
 }
 
 impl CallArg {
-    pub fn new<'a>(name: Option<String>, value: ExpressionRaw, start: usize, end: usize) -> CallArg {
+    pub fn new<'a>(name: Option<String>, value: Either<ExpressionRaw, Expression>, start: usize, end: usize) -> CallArg {
         CallArg { name, value, start, end }
     }
 }

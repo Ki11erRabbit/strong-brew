@@ -5,12 +5,15 @@ use sb_ast::core_lang;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::cell::RefCell;
+use either::Either;
 
 
 pub enum TypeError {
     TypeDoesNotExist(Vec<String>, usize, usize),
     PatternTypeMismatch(String),
     ParameterizedTypeWithoutName(usize, usize),
+    TypeMismatch(Type, Type),
+    ExpectedType(Type, Type),
 }
 
 fn generate_internal_globals() -> HashMap<Vec<String>, Rc<RefCell<Type>>> {
@@ -330,7 +333,7 @@ impl <'a> TypeChecker<'a> {
         Ok((param, (bound_names, ty)))
     }
 
-    fn does_type_exist(&mut self, ty: &core_lang::Type<'a>) -> Result<core_annotated::Type, TypeError> {
+    fn does_type_exist(&mut self, ty: &core_lang::Type) -> Result<core_annotated::Type, TypeError> {
         let ty = self.convert_type(ty)?;
 
         match ty {
@@ -356,7 +359,7 @@ impl <'a> TypeChecker<'a> {
         }
     }
 
-    fn does_type_exist_type(&mut self, ty: &core_lang::ExpressionType<'a>) -> Result<core_annotated::Type, TypeError> {
+    fn does_type_exist_type(&mut self, ty: &core_lang::ExpressionType) -> Result<core_annotated::Type, TypeError> {
 
         let core_lang::ExpressionType { expression, variadic } = ty;
         let ty = self.reduce_to_type(expression)?;
@@ -522,7 +525,7 @@ impl <'a> TypeChecker<'a> {
         }
     }
 
-    fn convert_consts(&mut self, consts: Vec<&core_lang::TopLevelStatement>) -> Result<Vec<TopLevelStatement>, TypeError> {
+    fn check_consts(&mut self, consts: Vec<&core_lang::TopLevelStatement>) -> Result<Vec<TopLevelStatement>, TypeError> {
         consts.iter().map(|x| match x {
             core_lang::TopLevelStatement::Const(x) => {
                 let core_lang::Const { visibility, name, ty, value, start, end } = x;
@@ -530,9 +533,9 @@ impl <'a> TypeChecker<'a> {
                 let name = PathName::new(segments.clone(), *tstart, *tend);
                 let visibility = Self::convert_visibility(visibility);
                 let ty = self.does_type_exist_type(ty)?;
-                let value = self.convert_expression(value)?;
+                let value = self.convert_expression_type(value)?;
 
-                self.check_expressions_type(&value, &ty)?;
+                let value = self.check_expressions_type(value, &ty)?;
 
                 self.add_global_type(&segments, Rc::new(RefCell::new(ty.clone())));
                 
@@ -592,14 +595,14 @@ impl <'a> TypeChecker<'a> {
                     let core_lang::CallArg { name, value, start, end } = x;
                     let name = name.map(|x| x.to_string());
                     let value = self.convert_expression(value)?;
-                    Ok(CallArg::new(name, value, *start, *end))
+                    Ok(CallArg::new(name, Either::Left(value), *start, *end))
                 }).collect::<Result<Vec<_>, _>>()?;
                 Ok(ExpressionRaw::Call(Call::new(Box::new(function), type_args,  args, *start, *end)))
             }
             core_lang::Expression::Return(expr) => {
-                let expr = expr.map(|x| {
+                let expr = expr.as_ref().map(|x| {
                     match self.convert_expression(&x) {
-                        Ok(x) => Ok(Box::new(x)),
+                        Ok(x) => Ok(Either::Left(Box::new(x))),
                         Err(e) => Err(e),
                     }
                 }).transpose()?;
@@ -610,11 +613,13 @@ impl <'a> TypeChecker<'a> {
             }
             core_lang::Expression::Parenthesized(expr) => {
                 let expr = self.convert_expression(expr)?;
-                Ok(ExpressionRaw::Parenthesized(Box::new(expr)))
+                Ok(ExpressionRaw::Parenthesized(Either::Left(Box::new(expr))))
             }
             core_lang::Expression::Tuple(exprs) => {
-                let exprs = exprs.iter().map(|x| self.convert_expression_type(&x)).collect::<Result<Vec<_>, _>>()?;
-                Ok(ExpressionRaw::Tuple(exprs))
+                let exprs = exprs.iter()
+                    .map(|x| self.convert_expression_type(&x))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(ExpressionRaw::Tuple(Either::Left(exprs)))
             }
             core_lang::Expression::IfExpression(if_) => {
                 todo!("convert if")
@@ -628,7 +633,125 @@ impl <'a> TypeChecker<'a> {
             core_lang::Expression::BinaryOperation { operator, left, right, start, end } => {
                 todo!("convert binary operation")
             }
+            _ => {
+                todo!("remove member access from core_lang")
+            }
             
+        }
+    }
+
+    fn check_expressions_type(
+        &mut self,
+        expr: ExpressionRaw,
+        ty: &Type
+    ) -> Result<Expression, TypeError> {
+
+        match expr {
+            ExpressionRaw::Type(ref tty) => {
+                if *ty == Type::Builtin(BuiltinType::Type) {
+                    return Ok(Expression::new(expr, ty));
+                }
+                Err(TypeError::TypeMismatch(ty.clone(), tty.clone()))
+            }
+            ExpressionRaw::Variable(ref name) => {
+                let vty = self.get_type(&name.segments).unwrap();
+                let vty = vty.clone();
+                let vty = vty.borrow();
+                if *vty == *ty {
+                    return Ok(Expression::new(expr, ty));
+                }
+                Err(TypeError::TypeMismatch(ty.clone(), vty.clone()))
+            }
+            ExpressionRaw::Constant(ref name) => {
+                let vty = self.get_type(&name.segments).unwrap();
+                let vty = vty.clone();
+                let vty = vty.borrow();
+                if *vty == *ty {
+                    return Ok(Expression::new(expr, ty));
+                }
+                Err(TypeError::TypeMismatch(ty.clone(), vty.clone()))
+            }
+            ExpressionRaw::Literal(ref lit) => {
+                let lit_ty = self.get_literal_type(&lit);
+                match ty {
+                    Type::PossibleType(types) => {
+                        if types.contains(&lit_ty) {
+                            return Ok(Expression::new(expr, ty));
+                        }
+                    }
+                    _ => {
+                        if lit_ty == *ty {
+                            return Ok(Expression::new(expr, ty));
+                        }
+                    }
+                }
+                Err(TypeError::TypeMismatch(ty.clone(), lit_ty))
+            }
+            ExpressionRaw::Call(call) => {
+                let core_annotated::Call { name, type_args, args, start: cstart, end: cend } = call;
+                let ExpressionRaw::Variable(name) = *name else {
+                    unreachable!("Call name must be a variable")
+                };
+
+                let function = self.get_type(&name.segments).unwrap();
+                let function = function.clone();
+                let function = function.borrow();
+                let Type::Builtin(BuiltinType::Function { params, return_type }) = &*function else {
+                    todo!("report not a function error")
+                };
+
+                if params.len() != args.len() {
+                    todo!("report wrong number of arguments")
+                }
+
+                let args = args.into_iter().enumerate().map(|(i, x)| {
+                    let core_annotated::CallArg { name, value, start, end } = x;
+                    let Either::Left(value) = value else {
+                        unreachable!("CallArg value must not be annotated at this time")
+                    };
+                    let value = self.check_expressions_type(value, &params[i])?;
+                    Ok(CallArg::new(name, Either::Right(value), start, end))
+                }).collect::<Result<Vec<_>, _>>()?;
+
+                let return_type = return_type.clone();
+                Ok(Expression::new(
+                    ExpressionRaw::Call(
+                        Call::new(
+                            Box::new(ExpressionRaw::Variable(name)),
+                            type_args,
+                            args,
+                            cstart,
+                            cend)), &return_type))
+            }
+            ExpressionRaw::Return(expr) => {
+                todo!("implement way to knoww what the return type is")
+            }
+            ExpressionRaw::Closure(closure) => {
+                todo!("implement typechecking for closures")
+            }
+            ExpressionRaw::Parenthesized(Either::Left(expr)) => {
+                let expr = self.check_expressions_type(*expr, ty)?;
+                Ok(Expression::new(ExpressionRaw::Parenthesized(Either::Right(Box::new(expr))), ty))
+            }
+            ExpressionRaw::Parenthesized(Either::Right(expr)) => unreachable!("Parenthesized should not be annotated at this time"),
+            ExpressionRaw::Tuple(Either::Left(exprs)) => {
+                let exprs = exprs.into_iter().map(|x| self.check_expressions_type(x, &Type::Builtin(BuiltinType::Type))).collect::<Result<Vec<_>, _>>()?;
+                Ok(Expression::new(ExpressionRaw::Tuple(Either::Right(exprs)), ty))
+            }
+            ExpressionRaw::Tuple(Either::Right(exprs)) => unreachable!("Tuple should not be annotated at this time"),
+            ExpressionRaw::IfExpression(_) => {
+                todo!("implement typechecking for if expressions")
+            }
+            ExpressionRaw::MatchExpression(_) => {
+                todo!("implement typechecking for match expressions")
+            }
+            ExpressionRaw::UnaryOperation { operator, operand, start, end } => {
+                todo!("implement typechecking for unary operations")
+            }
+            ExpressionRaw::BinaryOperation { operator, left, right, start, end } => {
+                todo!("implement typechecking for binary operations")
+            }
+
         }
     }
 }
