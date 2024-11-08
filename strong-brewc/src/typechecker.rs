@@ -14,6 +14,7 @@ pub enum TypeError {
     ParameterizedTypeWithoutName(usize, usize),
     TypeMismatch(Type, Type),
     ExpectedType(Type, Type),
+    NotAType,
 }
 
 fn generate_internal_globals() -> HashMap<Vec<String>, Rc<RefCell<Type>>> {
@@ -476,8 +477,52 @@ impl <'a> TypeChecker<'a> {
             core_lang::Expression::Type(ty) => {
                 self.convert_type(ty)
             }
+            core_lang::Expression::Literal(lit) => {
+                match lit {
+                    core_lang::Literal::Unit => return Ok(Type::Builtin(BuiltinType::Unit)),
+                    _ => {}
+                }
+                Err(TypeError::NotAType)
+            }
+            core_lang::Expression::Variable(var) => {
+                let core_lang::PathName { segments, start, end } = var;
+                let segments = segments.clone();
+                let ty = Type::User(PathName::new(segments, *start, *end));
+                Ok(ty)
+            }
+            core_lang::Expression::Constant(constant) => {
+                let core_lang::PathName { segments, start, end } = constant;
+                let segments = segments.clone();
+                let ty = Type::User(PathName::new(segments, *start, *end));
+                Ok(ty)
+            }
+            core_lang::Expression::IfExpression(_) => {
+                todo!("implement type reducing for if expressions")
+            }
+            core_lang::Expression::MatchExpression(_) => {
+                todo!("implement type reducing for match expressions")
+            }
+            core_lang::Expression::Call(_) => {
+                todo!("implement type reducing for calls")
+            }
+            core_lang::Expression::Tuple(tuple) => {
+                let tuple = tuple.iter().map(|x| self.convert_expression_type(x)).collect::<Result<Vec<_>, _>>()?;
+
+                let tuple = tuple.into_iter().map(|x| {
+                    match x {
+                        ExpressionRaw::Type(ty) => Ok(ty),
+                        _ => Err(TypeError::NotAType),
+                    }
+                }).collect::<Result<Vec<_>, _>>()?;
+                
+                Ok(Type::Tuple(tuple))
+            }
+            core_lang::Expression::Parenthesized(expr) => {
+                let ty = self.reduce_to_type(expr)?;
+                Ok(ty)
+            }
             _ => {
-                todo!("have the typechecker reduce expressions to types")
+                Err(TypeError::NotAType)
             }
         }
     }
@@ -908,6 +953,13 @@ impl <'a> TypeChecker<'a> {
 
                 let return_type = self.does_type_exist_type(&return_type)?;
 
+                self.add_global_type(&segments, Rc::new(RefCell::new(
+                    create_function_type(
+                        params.clone(),
+                        return_type.clone(),
+                    )
+                )));
+                
                 Ok(core_annotated::Function::new_extern(
                     visibility,
                     language,
