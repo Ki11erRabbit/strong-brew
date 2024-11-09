@@ -28,14 +28,15 @@ fn main() {
 
     let mut typechecker = typechecker::TypeChecker::new();
     let files = typechecker.check_files(&vec![(&args[1], file)]);
-    if let Err(_) = files {
+    if let Err(e) = files {
+        println!("{:?}", e);
         std::process::exit(1);
     }
     let files = files.unwrap();
     let mut code_generator = JavaCodegenerator::new();
     for file in files {
         let code = code_generator.generate(file);
-        println!("{}", code);
+        println!("\n{}", code);
     }
 
 }

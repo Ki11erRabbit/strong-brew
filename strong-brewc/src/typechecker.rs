@@ -756,9 +756,9 @@ impl <'a> TypeChecker<'a> {
             }
             ExpressionRaw::Literal(ref lit) => {
                 let lit_ty = self.get_literal_type(&lit);
-                match ty {
+                match &lit_ty {
                     Type::PossibleType(types) => {
-                        if types.contains(&lit_ty) {
+                        if types.contains(&ty) {
                             return Ok(Expression::new(expr, ty));
                         }
                     }

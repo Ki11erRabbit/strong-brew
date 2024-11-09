@@ -21,6 +21,50 @@ impl JavaCodegenerator {
         }
     }
 
+    fn convert_identifier<S>(name: S) -> String where S: AsRef<str> {
+        let mut output = String::new();
+        let chars = name.as_ref().chars();
+        for c in chars {
+            match c {
+                '-' => {
+                    output.push_str("_dash_");
+                }
+                '\'' => {
+                    output.push_str("_prime");
+                }
+                '+' => {
+                    output.push_str("_plus_");
+                }
+                '*' => {
+                    output.push_str("_star_");
+                }
+                '/' => {
+                    output.push_str("_slash_");
+                }
+                '%' => {
+                    output.push_str("_percent_");
+                }
+                '<' => {
+                    output.push_str("_lt_");
+                }
+                '>' => {
+                    output.push_str("_gt_");
+                }
+                '=' => {
+                    output.push_str("_eq_");
+                }
+                '!' => {
+                    output.push_str("_bang_");
+                }
+                _ => {
+                    output.push(c);
+                }
+
+            }
+        }
+        output
+    }
+
     fn add_to_subclass<S>(&mut self, path: Vec<S>, content: String)
     where S: AsRef<str> {
         let path: Vec<String> = path.iter().map(|s| s.as_ref().to_string()).collect();
@@ -124,6 +168,7 @@ impl JavaCodegenerator {
             TopLevelStatement::Import(import) => {
                 let Import { path, .. } = import;
                 let PathName { segments, .. } = path;
+                let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
                 output.push_str(format!("import {};\n", segments.join(".")).as_str());
             }
             TopLevelStatement::Enum(enum_) => {
@@ -139,7 +184,8 @@ impl JavaCodegenerator {
                 }
 
                 output.push_str("abstract class ");
-                output.push_str(name);
+                let name = Self::convert_identifier(name);
+                output.push_str(&name);
 
                 if !generic_params.is_empty() {
                     output.push_str("<");
@@ -153,23 +199,24 @@ impl JavaCodegenerator {
 
                 for variant in variants {
                     let Variant { name, fields, .. } = variant;
+                    let name = Self::convert_identifier(name);
 
                     output.push_str("public class ");
-                    output.push_str(name);
+                    output.push_str(&name);
                     if !generic_params.is_empty() {
                         output.push_str("<");
                         output.push_str(self.compile_generic_params(generic_params).as_str());
                         output.push_str(">");
                     }
                     output.push_str(" extends ");
-                    output.push_str(class_name);
+                    output.push_str(&class_name);
                     output.push_str(" {\n");
 
                     for field in fields {
                         output.push_str("public ");
                         output.push_str(self.compile_type(&field.ty).as_str());
                         output.push_str(" ");
-                        output.push_str(&field.name);
+                        output.push_str(&Self::convert_identifier(&field.name));
                         output.push_str(";\n");
                     }
 
@@ -179,6 +226,7 @@ impl JavaCodegenerator {
             TopLevelStatement::Const(constant) => {
                 let sb_ast::core_annotated::Const { visibility, name, ty, value, .. } = constant;
                 let PathName { segments, .. } = name;
+                let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
 
                 match visibility {
                     Visibility::Public => {
@@ -191,9 +239,18 @@ impl JavaCodegenerator {
                 output.push_str("static final ");
                 output.push_str(self.compile_type(ty).as_str());
                 output.push_str(" ");
-                output.push_str(&segments.join("__"));
+                output.push_str(segments.last().unwrap().as_str());
                 output.push_str(" = ");
                 output.push_str(self.compile_expression(value).as_str());
+
+                output = if segments.len() > 1 {
+                    let mut path = segments.clone();
+                    path.pop();
+                    self.add_to_subclass(path, output);
+                    String::new()
+                } else {
+                    output
+                };
             }
             TopLevelStatement::Function(function) => {
                 output.push_str(self.compile_function(function).as_str());
@@ -278,6 +335,7 @@ impl JavaCodegenerator {
             }
             Type::User(path) => {
                 let PathName { segments, .. } = path;
+                let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
                 output.push_str(segments.join(".").as_str());
             }
             Type::Parameterized(name, params) => {
@@ -333,10 +391,18 @@ impl JavaCodegenerator {
                 }
 
                 output.push_str("static ");
+
+                if !generic_params.is_empty() {
+                    output.push_str("<");
+                    output.push_str(self.compile_generic_params(generic_params).as_str());
+                    output.push_str("> ");
+                } 
+                
                 output.push_str(&self.compile_type(return_type));
                 output.push_str(" ");
                 // TODO: handle overloaded operators
                 let PathName { segments, .. } = name;
+                let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
                 output.push_str(segments.last().unwrap().as_str());
                 output.push_str("(");
                 for (i, param) in params.iter().enumerate() {
@@ -380,9 +446,17 @@ impl JavaCodegenerator {
                 }
 
                 output.push_str("static ");
+
+                if !generic_params.is_empty() {
+                    output.push_str("<");
+                    output.push_str(self.compile_generic_params(generic_params).as_str());
+                    output.push_str("> ");
+                } 
+                
                 output.push_str(&self.compile_type(return_type));
                 output.push_str(" ");
                 let PathName { segments, .. } = name;
+                let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
                 output.push_str(segments.last().unwrap().as_str());
                 output.push_str("(");
                 for (i, param) in params.iter().enumerate() {
@@ -450,10 +524,12 @@ impl JavaCodegenerator {
             }
             ExpressionRaw::Variable(name) => {
                 let PathName { segments, .. } = name;
+                let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
                 output.push_str(segments.join(".").as_str());
             }
             ExpressionRaw::Constant(constant) => {
                 let PathName { segments, .. } = constant;
+                let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
                 output.push_str(segments.join(".").as_str());
             }
             ExpressionRaw::Literal(lit) => {
@@ -490,6 +566,7 @@ impl JavaCodegenerator {
                     unreachable!("Call expression should have a variable name");
                 };
                 let PathName { segments, .. } = path;
+                let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
                 output.push_str(segments.join(".").as_str());
                 output.push_str("(");
                 for (i, arg) in call.args.iter().enumerate() {
