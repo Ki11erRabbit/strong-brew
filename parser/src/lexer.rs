@@ -51,6 +51,7 @@ pub enum Token<'a> {
     Char,
     Bool,
     Never,
+    Type,
     // Constants
     True,
     False,
@@ -135,6 +136,7 @@ impl std::fmt::Display for Token<'_> {
             Token::Char => write!(f, "char"),
             Token::Bool => write!(f, "bool"),
             Token::Never => write!(f, "never"),
+            Token::Type => write!(f, "type"),
             Token::True => write!(f, "true"),
             Token::False => write!(f, "false"),
             Token::Where => write!(f, "where"),
@@ -456,6 +458,7 @@ impl<'a> TokenLexer<'a> {
                     "char" => Ok(SpannedToken::new(Token::Char, start, end)),
                     "bool" => Ok(SpannedToken::new(Token::Bool, start, end)),
                     "never" => Ok(SpannedToken::new(Token::Never, start, end)),
+                    "type" => Ok(SpannedToken::new(Token::Type, start, end)),
                     "True" => Ok(SpannedToken::new(Token::True, start, end)),
                     "False" => Ok(SpannedToken::new(Token::False, start, end)),
                     "where" => Ok(SpannedToken::new(Token::Where, start, end)),

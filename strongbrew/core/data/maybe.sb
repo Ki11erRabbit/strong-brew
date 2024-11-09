@@ -2,7 +2,7 @@ module strongbrew::core::data::maybe;
 
 
 
-pub enum Maybe[T] {
+pub enum Maybe[T: type] {
     Just(just: T),
     Nothing
 }

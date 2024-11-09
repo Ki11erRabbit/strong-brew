@@ -53,6 +53,13 @@ pub fn convert_outer_to_inner(outer: outer::File) -> Result<inner::File, Convers
             }
         }
     }
+    inner_content.push(inner::Import::new(inner::PathName {
+            segments: vec!["strongbrew","core"],
+            start: 0,
+            end: 0,
+        }, 0, 0)
+    );
+    
     return Ok(inner::File {
         path: inner::PathName {
             segments,

@@ -9,3 +9,4 @@ sb_ast = { workspace = true }
 backend = { workspace = true }
 petgraph = "0.6.5"
 either = "1.13.0"
+clap = { version = "4.5.20", features = ["derive"] }

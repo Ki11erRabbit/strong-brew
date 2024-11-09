@@ -11,6 +11,16 @@ impl File<'_> {
     pub fn new<'a>(path: PathName<'a>, content: Vec<TopLevelStatement<'a>>) -> File<'a> {
         File { path, content }
     }
+
+    pub fn get_imports(&self) -> Vec<&PathName> {
+        self.content.iter().filter_map(|stmt| {
+            if let TopLevelStatement::Import(import) = stmt {
+                Some(&import.path)
+            } else {
+                None
+            }
+        }).collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]

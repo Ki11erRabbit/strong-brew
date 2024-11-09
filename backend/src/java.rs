@@ -117,7 +117,11 @@ impl JavaCodegenerator {
     fn compile_file(&mut self, file: &sb_ast::core_annotated::File, output: &mut String) {
         let File { path, content } = file;
         let PathName { segments, .. } = path;
-        output.push_str(format!("package {};\n", segments.join(".")).as_str());
+        let mut module_segments = segments.clone();
+        module_segments.pop();
+        if !module_segments.is_empty() {
+            output.push_str(format!("package {};\n", module_segments.join(".")).as_str());
+        }
 
         let mut imports = Vec::new();
         let mut rest = Vec::new();
@@ -218,15 +222,42 @@ impl JavaCodegenerator {
                     }
 
                     constructor.push_str(&class_name);
+                    if !generic_params.is_empty() {
+                        constructor.push_str("<");
+                        constructor.push_str(self.compile_generic_params(generic_params).as_str());
+                        constructor.push_str(">");
+                    }
                     constructor.push_str(" ");
                     constructor.push_str(&name);
                     constructor.push_str("(");
                     
                     variant_output.push_str(" extends ");
                     variant_output.push_str(&class_name);
-                    variant_output.push_str(" {\n");
 
-                    let mut new_call = String::from("(");
+                    if !generic_params.is_empty() {
+                        variant_output.push_str("<");
+                        variant_output.push_str(self.compile_generic_params(generic_params).as_str());
+                        variant_output.push_str(">");
+                    }
+                    
+                    variant_output.push_str(" {\n");
+                    let mut internal_constructor = String::from("public ");
+                    let mut new_call = String::new();
+                    if !generic_params.is_empty() {
+                        new_call.push_str("<");
+                        new_call.push_str(self.compile_generic_params(generic_params).as_str());
+                        new_call.push_str(">");
+
+                        /*internal_constructor.push_str("<");
+                        internal_constructor.push_str(self.compile_generic_params(generic_params).as_str());
+                        internal_constructor.push_str(">");*/
+                    }
+                    new_call.push_str("(");
+                    internal_constructor.push_str(" ");
+                    internal_constructor.push_str(&name);
+                    internal_constructor.push_str("(");
+
+                    let mut contructor_body = String::new();
 
                     for (i, field) in fields.into_iter().enumerate() {
                         variant_output.push_str("public ");
@@ -235,6 +266,16 @@ impl JavaCodegenerator {
                         variant_output.push_str(&Self::convert_identifier(&field.name));
                         variant_output.push_str(";\n");
 
+                        internal_constructor.push_str(self.compile_type(&field.ty).as_str());
+                        internal_constructor.push_str(" ");
+                        internal_constructor.push_str(&Self::convert_identifier(&field.name));
+
+                        contructor_body.push_str("this.");
+                        contructor_body.push_str(&Self::convert_identifier(&field.name));
+                        contructor_body.push_str(" = ");
+                        contructor_body.push_str(&Self::convert_identifier(&field.name));
+                        contructor_body.push_str(";\n");
+
                         constructor.push_str(self.compile_type(&field.ty).as_str());
                         constructor.push_str(" ");
                         constructor.push_str(&Self::convert_identifier(&field.name));
@@ -242,8 +283,14 @@ impl JavaCodegenerator {
                         if i < fields.len() - 1 {
                             constructor.push_str(", ");
                             new_call.push_str(", ");
+                            internal_constructor.push_str(", ");
                         }
                     }
+                    internal_constructor.push_str(") {\n");
+                    internal_constructor.push_str(contructor_body.as_str());
+                    internal_constructor.push_str("}\n");
+
+                    variant_output.push_str(internal_constructor.as_str());
 
                     variant_output.push_str("}\n");
 
@@ -282,6 +329,7 @@ impl JavaCodegenerator {
                 output.push_str(segments.last().unwrap().as_str());
                 output.push_str(" = ");
                 output.push_str(self.compile_expression(value).as_str());
+                output.push_str(";\n");
 
                 output = if segments.len() > 1 {
                     let mut path = segments.clone();
@@ -382,12 +430,32 @@ impl JavaCodegenerator {
                 output.push_str(segments.join(".").as_str());
             }
             Type::Parameterized(name, params) => {
+
+                match name.as_ref() {
+                    Type::User(path) => {
+                        let PathName { segments, .. } = path;
+                        if segments.last().unwrap().as_str() == "Array" {
+                            for param in params {
+                                output.push_str(self.compile_type(param).as_str());
+                                output.push_str("[]");
+                                return output;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+
+                
                 output.push_str(self.compile_type(name).as_str());
                 output.push_str("<");
-                for param in params {
+                for (i, param) in params.iter().enumerate() {
                     output.push_str(self.compile_type(param).as_str());
-                    output.push_str(", ");
+
+                    if i < params.len() - 1 {
+                        output.push_str(", ");
+                    }
                 }
+                output.push_str(">");
             }
             Type::Tuple(types) => {
                 let len = types.len();

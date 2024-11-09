@@ -154,6 +154,8 @@ impl <'a> TypeChecker<'a> {
         let core_lang::PathName { segments, start, end } = &file.path;
         let path = PathName::new(segments.clone(), *start, *end);
 
+        println!("Checking file: {}", name);
+
         let mut imports = Vec::new();
         let mut enums = Vec::new();
         let mut consts = Vec::new();
@@ -353,7 +355,10 @@ impl <'a> TypeChecker<'a> {
     fn check_field(&mut self, field: &core_lang::Field) -> Result<core_annotated::Field, TypeError> {
         let core_lang::Field { visibility, name, ty, start, end } = field;
         let visibility = Self::convert_visibility(visibility);
-        let ty = self.does_type_exist_type(ty)?;
+        //println!("check_field: {:?}", ty);
+        let ty = self.reduce_to_type_expression_type(ty)?;
+        let ty = self.does_type_exist_annotated(ty)?;
+        //println!("check_field: {:?}", ty);
         Ok(core_annotated::Field::new(visibility, name, ty, *start, *end))
     }
 
@@ -393,11 +398,14 @@ impl <'a> TypeChecker<'a> {
 
     fn does_type_exist_annotated(&mut self, ty: Type) -> Result<core_annotated::Type, TypeError> {
         match ty {
-            Type::User(PathName { segments, start, end }) => {
+            Type::User(PathName { ref segments, ref start, ref end }) => {
+                if segments.first().unwrap().len() == 1 {
+                    return Ok(ty);
+                }
                 if let Some(ty) = self.get_type(&segments) {
                     return Ok(ty.borrow().clone());
                 }
-                Err(TypeError::TypeDoesNotExist(segments, start, end))
+                Err(TypeError::TypeDoesNotExist(segments.clone(), *start, *end))
             }
             ty => Ok(ty),
         }
@@ -471,7 +479,7 @@ impl <'a> TypeChecker<'a> {
                 self.convert_type(ty)?
             }
             _ => {
-                todo!("have the typechecker reduce expressions to types")
+                self.reduce_to_type(expression)?
             }
         };
 

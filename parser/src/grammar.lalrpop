@@ -39,6 +39,7 @@ extern {
         "char" => Token::Char,
         "bool" => Token::Bool,
         "never" => Token::Never,
+        "type" => Token::Type,
         "True" => Token::True,
         "False" => Token::False,
         Int_lit => Token::IntLiteral(<&'a str>),
@@ -498,6 +499,7 @@ TermExpr: Expression<'a> = {
     "char" => Expression::Type(BuiltinType::Char),
     "bool" => Expression::Type(BuiltinType::Bool),
     "never" => Expression::Type(BuiltinType::Never),
+    "type" => Expression::Type(BuiltinType::Type),
     <f:FunctionType> => Expression::Type(f),
 }
 
