@@ -44,6 +44,7 @@ pub enum TopLevelStatement<'a> {
     Enum(Enum<'a>),
     Const(Const<'a>),
     Import(Import<'a>),
+    Extern(&'a str, &'a str),
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
@@ -588,6 +589,9 @@ pub fn convert_inner_to_core(file: inner::File) -> File {
             }
             inner::TopLevelStatement::Function(function) => {
                 convert_function(function)
+            }
+            inner::TopLevelStatement::Extern(lang, body) => {
+                TopLevelStatement::Extern(lang, body)
             }
         };
 

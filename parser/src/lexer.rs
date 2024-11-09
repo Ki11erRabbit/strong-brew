@@ -33,6 +33,7 @@ pub enum Token<'a> {
     Const,
     // Module
     Import,
+    Include,
     Module,
     // Visibility
     Pub,
@@ -118,6 +119,7 @@ impl std::fmt::Display for Token<'_> {
             Token::Let => write!(f, "let"),
             Token::Mut => write!(f, "mut"),
             Token::Const => write!(f, "const"),
+            Token::Include => write!(f, "include"),
             Token::Import => write!(f, "import"),
             Token::Module => write!(f, "module"),
             Token::Pub => write!(f, "pub"),
@@ -438,6 +440,7 @@ impl<'a> TokenLexer<'a> {
                     "let" => Ok(SpannedToken::new(Token::Let, start, end)),
                     "mut" => Ok(SpannedToken::new(Token::Mut, start, end)),
                     "const" => Ok(SpannedToken::new(Token::Const, start, end)),
+                    "include" => Ok(SpannedToken::new(Token::Include, start, end)),
                     "import" => Ok(SpannedToken::new(Token::Import, start, end)),
                     "module" => Ok(SpannedToken::new(Token::Module, start, end)),
                     "pub" => Ok(SpannedToken::new(Token::Pub, start, end)),

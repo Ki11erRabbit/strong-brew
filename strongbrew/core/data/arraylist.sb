@@ -1,6 +1,6 @@
-module core::data::arraylist;
+module strongbrew::core::data::arraylist;
 
-import core::data::fin;
+import strongbrew::core::data::fin;
 
 
 pub struct Arraylist[T: type, N: nat] {

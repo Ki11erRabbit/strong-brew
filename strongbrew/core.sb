@@ -1,4 +1,4 @@
-module core;
+module strongbrew::core;
 
 pub extern "Java" fn while(cond: fn () (), body: fn () ()) = "while (cond.run()) { body.run(); }";
 

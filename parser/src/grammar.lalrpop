@@ -24,6 +24,7 @@ extern {
         "mut" => Token::Mut,
         "const" => Token::Const,
         "import" => Token::Import,
+        "include" => Token::Include,
         "module" => Token::Module,
         "pub" => Token::Pub,
         "extern" => Token::Extern,
@@ -118,6 +119,13 @@ pub Decl: TopLevelStatement<'a> = {
     <s:Struct> => s,
     <e:Enum> => e,
     <c:Const> => c,
+    <e:Extern> => e,
+};
+
+Extern: TopLevelStatement<'a> = {
+    "include" <lang:String_lit> <body:String_lit> => {
+        TopLevelStatement::Extern(lang, body)
+    },
 };
 
 pub Function: TopLevelStatement<'a> = {

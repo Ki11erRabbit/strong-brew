@@ -169,7 +169,7 @@ impl JavaCodegenerator {
                 let Import { path, .. } = import;
                 let PathName { segments, .. } = path;
                 let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
-                output.push_str(format!("import {};\n", segments.join(".")).as_str());
+                output.push_str(format!("import {}.*;\n", segments.join(".")).as_str());
             }
             TopLevelStatement::Enum(enum_) => {
                 let Enum { visibility, name, generic_params, variants, .. } = enum_;
@@ -193,35 +193,75 @@ impl JavaCodegenerator {
                     output.push_str(">");
                 }
                 
-                output.push_str(" {\n}\n ");
+                output.push_str(" {\n");
 
                 let class_name = name;
+
+                let mut variant_output = String::new();
 
                 for variant in variants {
                     let Variant { name, fields, .. } = variant;
                     let name = Self::convert_identifier(name);
 
-                    output.push_str("public class ");
-                    output.push_str(&name);
+                    let mut constructor = String::from("public static ");
+
+                    variant_output.push_str("public class ");
+                    variant_output.push_str(&name);
                     if !generic_params.is_empty() {
-                        output.push_str("<");
-                        output.push_str(self.compile_generic_params(generic_params).as_str());
-                        output.push_str(">");
-                    }
-                    output.push_str(" extends ");
-                    output.push_str(&class_name);
-                    output.push_str(" {\n");
+                        variant_output.push_str("<");
+                        variant_output.push_str(self.compile_generic_params(generic_params).as_str());
+                        variant_output.push_str(">");
 
-                    for field in fields {
-                        output.push_str("public ");
-                        output.push_str(self.compile_type(&field.ty).as_str());
-                        output.push_str(" ");
-                        output.push_str(&Self::convert_identifier(&field.name));
-                        output.push_str(";\n");
+                        constructor.push_str("<");
+                        constructor.push_str(self.compile_generic_params(generic_params).as_str());
+                        constructor.push_str(">");
                     }
 
-                    output.push_str("}\n");
+                    constructor.push_str(&class_name);
+                    constructor.push_str(" ");
+                    constructor.push_str(&name);
+                    constructor.push_str("(");
+                    
+                    variant_output.push_str(" extends ");
+                    variant_output.push_str(&class_name);
+                    variant_output.push_str(" {\n");
+
+                    let mut new_call = String::from("(");
+
+                    for (i, field) in fields.into_iter().enumerate() {
+                        variant_output.push_str("public ");
+                        variant_output.push_str(self.compile_type(&field.ty).as_str());
+                        variant_output.push_str(" ");
+                        variant_output.push_str(&Self::convert_identifier(&field.name));
+                        variant_output.push_str(";\n");
+
+                        constructor.push_str(self.compile_type(&field.ty).as_str());
+                        constructor.push_str(" ");
+                        constructor.push_str(&Self::convert_identifier(&field.name));
+                        new_call.push_str(&Self::convert_identifier(&field.name));
+                        if i < fields.len() - 1 {
+                            constructor.push_str(", ");
+                            new_call.push_str(", ");
+                        }
+                    }
+
+                    variant_output.push_str("}\n");
+
+                    constructor.push_str(") {\n");
+                    new_call.push_str(");\n");
+
+                    constructor.push_str("return new ");
+                    constructor.push_str(&name);
+                    constructor.push_str(new_call.as_str());
+                    constructor.push_str("\n}\n");
+
+                    output.push_str(constructor.as_str());
                 }
+
+
+                output.push_str("\n}\n"); 
+                
+                output.push_str(&variant_output);
             }
             TopLevelStatement::Const(constant) => {
                 let sb_ast::core_annotated::Const { visibility, name, ty, value, .. } = constant;
@@ -254,6 +294,9 @@ impl JavaCodegenerator {
             }
             TopLevelStatement::Function(function) => {
                 output.push_str(self.compile_function(function).as_str());
+            }
+            TopLevelStatement::Extern(_, body) => {
+                output.push_str(body);
             }
         }
         output

@@ -1,0 +1,8 @@
+module strongbrew::core::data::maybe;
+
+
+
+pub enum Maybe[T] {
+    Just(just: T),
+    Nothing
+}

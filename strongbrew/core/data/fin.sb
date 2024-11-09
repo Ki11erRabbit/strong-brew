@@ -1,4 +1,4 @@
-module core::data::fin;
+module strongbrew::core::data::fin;
 
 
 pub enum Fin[nat::Succ(k): nat] {

@@ -158,6 +158,7 @@ impl <'a> TypeChecker<'a> {
         let mut enums = Vec::new();
         let mut consts = Vec::new();
         let mut functions = Vec::new();
+        let mut externs = Vec::new();
         
         
         for decl in &file.content {
@@ -174,6 +175,9 @@ impl <'a> TypeChecker<'a> {
                 core_lang::TopLevelStatement::Function(_) => {
                     functions.push(decl);
                 }
+                core_lang::TopLevelStatement::Extern(lang, body) => {
+                    externs.push(TopLevelStatement::Extern(lang.to_string(), body.to_string()));
+                }
             }
         }
 
@@ -186,6 +190,7 @@ impl <'a> TypeChecker<'a> {
         decl.extend(enums);
         decl.extend(consts);
         decl.extend(functions);
+        decl.extend(externs);
 
 
         let file = core_annotated::File::new(path, decl);

@@ -33,6 +33,7 @@ pub enum TopLevelStatement<'a> {
     Enum(Enum<'a>),
     Const(Const<'a>),
     Import(Import<'a>),
+    Extern(&'a str, &'a str),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]

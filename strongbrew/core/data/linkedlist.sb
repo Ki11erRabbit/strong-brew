@@ -1,6 +1,6 @@
-module core::data::linkedlist;
+module strongbrew::core::data::linkedlist;
 
-import core::data::maybe;
+import strongbrew::core::data::maybe;
 
 pub enum Linkedlist[T: type] {
     Cons(car: T, cdr: Linkedlist[T]),

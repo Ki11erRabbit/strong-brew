@@ -41,6 +41,7 @@ pub enum TopLevelStatement {
     Enum(Enum),
     Const(Const),
     Import(Import),
+    Extern(String, String),
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]

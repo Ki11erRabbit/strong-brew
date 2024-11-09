@@ -48,6 +48,9 @@ pub fn convert_outer_to_inner(outer: outer::File) -> Result<inner::File, Convers
             outer::TopLevelStatement::Enum(enum_) => {
                 inner_content.push(convert_enum(enum_)?);
             }
+            outer::TopLevelStatement::Extern(lang, body) => {
+                inner_content.push(inner::TopLevelStatement::Extern(lang, body));
+            }
         }
     }
     return Ok(inner::File {
