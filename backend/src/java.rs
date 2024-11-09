@@ -11,6 +11,7 @@ pub struct SubClass(pub String, pub HashMap<String, SubClass>);
 
 pub struct JavaCodegenerator {
     sub_classes: HashMap<Vec<String>, String>,
+    grouped_imports: HashMap<String, String>,
 }
 
 
@@ -18,6 +19,7 @@ impl JavaCodegenerator {
     pub fn new() -> JavaCodegenerator {
         JavaCodegenerator {
             sub_classes: HashMap::new(),
+            grouped_imports: HashMap::new(),
         }
     }
 
@@ -63,6 +65,22 @@ impl JavaCodegenerator {
             }
         }
         output
+    }
+
+    fn add_new_import(&mut self, path: String, import: String) {
+        match self.grouped_imports.entry(path) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                let entry = entry.get_mut();
+                entry.push_str(import.as_str());
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(import);
+            }
+        }
+    }
+
+    fn get_import(&mut self, path: &str) -> Option<&String> {
+        self.grouped_imports.get(path)
     }
 
     fn add_to_subclass<S>(&mut self, path: Vec<S>, content: String)
@@ -114,13 +132,14 @@ impl JavaCodegenerator {
         }
     }
 
-    fn compile_file(&mut self, file: &sb_ast::core_annotated::File, output: &mut String) {
+    fn compile_file(&mut self, file: &sb_ast::core_annotated::File, output: &mut Vec<(String, String)>) {
+        let mut output_string = String::new();
         let File { path, content } = file;
         let PathName { segments, .. } = path;
         let mut module_segments = segments.clone();
         module_segments.pop();
         if !module_segments.is_empty() {
-            output.push_str(format!("package {};\n", module_segments.join(".")).as_str());
+            output_string.push_str(format!("package {};\n", module_segments.join(".")).as_str());
         }
 
         let mut imports = Vec::new();
@@ -138,20 +157,53 @@ impl JavaCodegenerator {
         }
 
         for statement in imports {
-            output.push_str(self.compile_content(statement).as_str());
+            let content = self.compile_content(statement);
+            let string = content[0].1.as_str();
+            match self.get_import(string) {
+                Some(import) => {
+                    output_string.push_str(import);
+                }
+                None => {
+                    output_string.push_str(string);
+                }
+            }
         }
 
-        output.push_str(format!("public class {} {{\n", segments.last().unwrap()).as_str());
 
+        let mut statement_output = Vec::new();
         for statement in rest {
-            output.push_str(self.compile_content(statement).as_str());
+            statement_output.push(self.compile_content(statement));
+        }
+
+
+        
+        let mut pushed_class = false;
+        for statement in statement_output {
+            for (i, (name, s)) in statement.into_iter().enumerate() {
+                if i >= output.len() {
+                    output.push((name.clone(), output_string.clone()));
+                }
+                if i == 0 && !pushed_class {
+                    pushed_class = true;
+                    output[i].1.push_str(format!("public class {} {{\n", segments.last().unwrap()).as_str());
+                }
+                if i == 0 {
+                    output[i].1.push_str(s.as_str());
+                }
+                if i > 0 {
+                    let import_key = format!("import {}.*;\n", segments.join("."));
+                    let import_name = format!("import {}.{};", module_segments.join("."), name);
+                    self.add_new_import(import_key, import_name);
+                    output[i].1.push_str(s.as_str());
+                }
+            }
         }
 
         let sub_class = self.merge_subclasses();
 
-        self.compile_subclass(&sub_class, output);
+        self.compile_subclass(&sub_class, &mut output[0].1);
 
-        output.push_str("}\n");
+        output[0].1.push_str("}\n");
     }
 
     fn compile_subclass(&mut self, sub_class: &SubClass, output: &mut String) {
@@ -166,8 +218,9 @@ impl JavaCodegenerator {
         }
     }
 
-    fn compile_content(&mut self, content: &TopLevelStatement) -> String {
+    fn compile_content(&mut self, content: &TopLevelStatement) -> Vec<(String, String)> {
         let mut output = String::new();
+        let mut output_vec = Vec::new();
         match content {
             TopLevelStatement::Import(import) => {
                 let Import { path, .. } = import;
@@ -303,11 +356,16 @@ impl JavaCodegenerator {
                     constructor.push_str("\n}\n");
 
                     output.push_str(constructor.as_str());
+
+                    output_vec.push((name.clone(), variant_output));
+                    variant_output = String::new();
                 }
 
 
-                output.push_str("\n}\n"); 
-                
+                output.push_str("\n}\n");
+
+                output_vec.insert(0, (class_name, output));
+                output = String::new();
                 output.push_str(&variant_output);
             }
             TopLevelStatement::Const(constant) => {
@@ -347,7 +405,8 @@ impl JavaCodegenerator {
                 output.push_str(body);
             }
         }
-        output
+        output_vec.insert(0 ,(String::new(), output));
+        output_vec
     }
 
     fn compile_generic_params(&mut self, generic_params: &Vec<GenericParam>) -> String {
@@ -704,9 +763,9 @@ impl JavaCodegenerator {
     }
 }
 
-impl Codegenerator<String> for JavaCodegenerator {
-    fn generate(&mut self, file: sb_ast::core_annotated::File) -> String {
-        let mut output = String::new();
+impl Codegenerator<(String,String)> for JavaCodegenerator {
+    fn generate(&mut self, file: sb_ast::core_annotated::File) -> Vec<(String, String)> {
+        let mut output = Vec::new();
         self.compile_file(&file, &mut output);
         output
     }

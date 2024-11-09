@@ -137,30 +137,37 @@ fn main() {
     let files = files.unwrap();
     let mut code_generator = JavaCodegenerator::new();
     for (file, name) in files.into_iter().zip(names) {
-        let code = code_generator.generate(file);
+        let code_files = code_generator.generate(file);
 
-        let name = name.split("./").collect::<Vec<_>>();
-        let split = if name.len() > 1 {
-            name[1].split('/')
-        } else {
-            name[0].split('/')
-        };
-        let mut path = String::from(&args.cache_path);
-        path.push('/');
-        for item in split {
-            println!("{}", item);
-            if !item.contains('.') {
-                path.push_str(item);
-                path.push('/');
+        for (class_name, code) in code_files {
+
+            let name = name.split("./").collect::<Vec<_>>();
+            let split = if name.len() > 1 {
+                name[1].split('/')
             } else {
-                std::fs::create_dir_all(&path).unwrap();
-                let file_name = item.split('.').next().unwrap();
-                path.push_str(&format!("{}.java", file_name));
+                name[0].split('/')
+            };
+            let mut path = String::from(&args.cache_path);
+            path.push('/');
+            for item in split {
+                println!("{}", item);
+                if !item.contains('.') {
+                    path.push_str(item);
+                    path.push('/');
+                } else {
+                    std::fs::create_dir_all(&path).unwrap();
+                    let mut file_name = item.split('.').next().unwrap();
+                    file_name = if !class_name.is_empty() {
+                        class_name.as_str()
+                    } else {
+                        file_name
+                    };
+                    path.push_str(&format!("{}.java", file_name));
+                }
             }
+            std::fs::write(&path, code).unwrap();
         }
-            println!("\n");
 
-        std::fs::write(&path, code).unwrap();
     }
 
     let start_path = format!("{}/Start.java", args.stdlib_path);
