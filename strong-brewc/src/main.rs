@@ -104,7 +104,7 @@ fn main() {
         std::process::exit(1);
     }
     let core = core.unwrap();
-    parsed_files.push((&core_path, core));
+    parsed_files.insert(0, (&core_path, core));
 
     
     println!("Restricting Ast");

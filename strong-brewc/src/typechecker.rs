@@ -786,7 +786,7 @@ impl <'a> TypeChecker<'a> {
                 let ExpressionRaw::Variable(name) = *name else {
                     unreachable!("Call name must be a variable")
                 };
-
+                
                 let function = self.get_type(&name.segments).unwrap();
                 let function = function.clone();
                 let function = function.borrow();
