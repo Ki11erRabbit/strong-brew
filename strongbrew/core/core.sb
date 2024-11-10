@@ -1,12 +1,12 @@
-module strongbrew::core;
+module strongbrew::core::core;
 
 //pub extern "Java" fn while(cond: fn () (), body: fn () ()) = "while (cond.run()) { body.run(); }";
 
 //pub extern "Java" fn I64::for(start: i64, end: i64, body: fn () (i64)) = "for (int i = start; i < end; i++) { body.run(i); }";
 
 pub extern "Java" fn print(string: String) = "
-    return java.lang.System.out.print(string);
+    java.lang.System.out.print(string);
 "
 pub extern "Java" fn println(string: String) = "
-    return java.lang.System.out.println(string);
+    java.lang.System.out.println(string);
 "

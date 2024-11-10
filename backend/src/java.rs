@@ -6,6 +6,7 @@ use either::Either;
 use crate::Codegenerator;
 
 
+static CORE_IMPORT: &str = "import strongbrew.core.core.*;\n";
 static TUPLE_IMPORT: &str = "import strongbrew.tuples.*;\n";
 static CALLABLE_IMPORT: &str = "import strongbrew.callables.*;\n";
 static NUMBER_IMPORT: &str = "import strongbrew.numbers.*;\n";
@@ -156,7 +157,11 @@ impl JavaCodegenerator {
         module_segments.pop();
         // We need to exclude the last segment as it is the name of the file. Java doesn't like that.
         if !module_segments.is_empty() {
-            output_string.push_str(format!("package {};\n", module_segments.join(".")).as_str());
+            if module_segments.len() == 1 {
+                output_string.push_str(format!("package {};\n", segments.join(".")).as_str());
+            } else {
+                output_string.push_str(format!("package {};\n", module_segments.join(".")).as_str());
+            }
         }
 
         let mut imports = Vec::new();
@@ -185,6 +190,7 @@ impl JavaCodegenerator {
                 }
             }
         }
+        output_string.push_str(CORE_IMPORT);
         output_string.push_str(TUPLE_IMPORT);
         output_string.push_str(CALLABLE_IMPORT);
         output_string.push_str(NUMBER_IMPORT);
