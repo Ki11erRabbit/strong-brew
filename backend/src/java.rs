@@ -6,7 +6,7 @@ use either::Either;
 use crate::Codegenerator;
 
 
-static CORE_IMPORT: &str = "import strongbrew.core.core.*;\n";
+static CORE_IMPORT: &str = "import static strongbrew.core.core.*;\n";
 static TUPLE_IMPORT: &str = "import strongbrew.tuples.*;\n";
 static CALLABLE_IMPORT: &str = "import strongbrew.callables.*;\n";
 static NUMBER_IMPORT: &str = "import strongbrew.numbers.*;\n";
@@ -222,7 +222,7 @@ impl JavaCodegenerator {
                 // If we are not at the current module, we add the content to the subclass.
                 if i > 0 {
                     // Here we add the import needed by other classes if there are submodules.
-                    let import_key = format!("import {}.*;\n", segments.join("."));
+                    let import_key = format!("import static {}.*;\n", segments.join("."));
                     let import_name = format!("import {}.{};", module_segments.join("."), name);
                     self.add_new_import(import_key, import_name);
                     output[i].1.push_str(s.as_str());
@@ -267,7 +267,7 @@ impl JavaCodegenerator {
                 let Import { path, .. } = import;
                 let PathName { segments, .. } = path;
                 let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
-                output.push_str(format!("import {}.*;\n", segments.join(".")).as_str());
+                output.push_str(format!("import static {}.*;\n", segments.join(".")).as_str());
             }
             TopLevelStatement::Enum(enum_) => {
                 let Enum { visibility, name, generic_params, variants, .. } = enum_;
