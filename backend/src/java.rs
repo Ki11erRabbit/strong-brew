@@ -6,11 +6,19 @@ use either::Either;
 use crate::Codegenerator;
 
 
+static TUPLE_IMPORT: &str = "import strongbrew.tuples.*;\n";
+static CALLABLE_IMPORT: &str = "import strongbrew.callables.*;\n";
+static NUMBER_IMPORT: &str = "import strongbrew.numbers.*;\n";
+
 pub struct SubClass(pub String, pub HashMap<String, SubClass>);
 
 
 pub struct JavaCodegenerator {
+    /// Subclasses are where we put qualified names.
+    /// Qualified names are how we handle function overloading.
     sub_classes: HashMap<Vec<String>, String>,
+    /// Grouped imports are used to import all of the classes created by a module.
+    /// This is due to how nested classes are handled in Java.
     grouped_imports: HashMap<String, String>,
 }
 
@@ -23,6 +31,9 @@ impl JavaCodegenerator {
         }
     }
 
+    /// Converts a string to a valid Java identifier.
+    /// This is done by replacing all invalid characters with valid ones.
+    /// This does lead to more verbose names, but it is good enough for a compiler into Java.
     fn convert_identifier<S>(name: S) -> String where S: AsRef<str> {
         let mut output = String::new();
         let chars = name.as_ref().chars();
@@ -97,6 +108,8 @@ impl JavaCodegenerator {
         }
     }
 
+    /// This function converts subclasses to a linked list of subclasses.
+    /// This is done because there maybe be multiple subclasses with the same base name.
     fn merge_subclasses(&mut self) -> SubClass {
         let mut start = SubClass(String::new(), HashMap::new());
         
@@ -132,12 +145,16 @@ impl JavaCodegenerator {
         }
     }
 
+    /// The output parameter is a vector of names of classes and the content of the class.
+    /// The name should be blank if the class has the same name as the module. This should be the first element in the vector.
+    /// A vector index is used to represent an individual class.
     fn compile_file(&mut self, file: &sb_ast::core_annotated::File, output: &mut Vec<(String, String)>) {
         let mut output_string = String::new();
         let File { path, content } = file;
         let PathName { segments, .. } = path;
         let mut module_segments = segments.clone();
         module_segments.pop();
+        // We need to exclude the last segment as it is the name of the file. Java doesn't like that.
         if !module_segments.is_empty() {
             output_string.push_str(format!("package {};\n", module_segments.join(".")).as_str());
         }
@@ -168,6 +185,9 @@ impl JavaCodegenerator {
                 }
             }
         }
+        output_string.push_str(TUPLE_IMPORT);
+        output_string.push_str(CALLABLE_IMPORT);
+        output_string.push_str(NUMBER_IMPORT);
 
 
         let mut statement_output = Vec::new();
@@ -180,17 +200,22 @@ impl JavaCodegenerator {
         let mut pushed_class = false;
         for statement in statement_output {
             for (i, (name, s)) in statement.into_iter().enumerate() {
+                // Here we resize the output vector to the current index if needed.
                 if i >= output.len() {
                     output.push((name.clone(), output_string.clone()));
                 }
+                // If we are at the current module and we haven't pushed the class header yet, we push it.
                 if i == 0 && !pushed_class {
                     pushed_class = true;
                     output[i].1.push_str(format!("public class {} {{\n", segments.last().unwrap()).as_str());
                 }
+                // If we are at the current module, we push the content.
                 if i == 0 {
                     output[i].1.push_str(s.as_str());
                 }
+                // If we are not at the current module, we add the content to the subclass.
                 if i > 0 {
+                    // Here we add the import needed by other classes if there are submodules.
                     let import_key = format!("import {}.*;\n", segments.join("."));
                     let import_name = format!("import {}.{};", module_segments.join("."), name);
                     self.add_new_import(import_key, import_name);
@@ -218,6 +243,9 @@ impl JavaCodegenerator {
         }
     }
 
+    /// The return type is a vector of names of classes and the content of the class.
+    /// The name should be blank if the class has the same name as the module. This should be the first element in the vector.
+    /// A vector index is used to represent an individual class.
     fn compile_content(&mut self, content: &TopLevelStatement) -> Vec<(String, String)> {
         let mut output = String::new();
         let mut output_vec = Vec::new();
@@ -240,6 +268,8 @@ impl JavaCodegenerator {
                     }
                 }
 
+                // Enums are represented as abstract classes in Java with an implementation for each variant.
+                // It should also contain constructor static methods to create each variant.
                 output.push_str("abstract class ");
                 let name = Self::convert_identifier(name);
                 output.push_str(&name);
@@ -252,11 +282,10 @@ impl JavaCodegenerator {
                 
                 output.push_str(" {\n");
 
+                // We need to backup the class name as we need to use it in the constructor functions.
                 let class_name = name;
-
-                let mut variant_output = String::new();
-
                 for variant in variants {
+                    let mut variant_output = String::new();
                     let Variant { name, fields, .. } = variant;
                     let name = Self::convert_identifier(name);
 
@@ -358,7 +387,6 @@ impl JavaCodegenerator {
                     output.push_str(constructor.as_str());
 
                     output_vec.push((name.clone(), variant_output));
-                    variant_output = String::new();
                 }
 
 
@@ -366,7 +394,6 @@ impl JavaCodegenerator {
 
                 output_vec.insert(0, (class_name, output));
                 output = String::new();
-                output.push_str(&variant_output);
             }
             TopLevelStatement::Const(constant) => {
                 let sb_ast::core_annotated::Const { visibility, name, ty, value, .. } = constant;
@@ -470,15 +497,20 @@ impl JavaCodegenerator {
                         output.push_str("Type");
                     }
                     BuiltinType::Function { params, return_type } => {
-                        output.push_str("Runnable");
+                        output.push_str("Callable");
+                        output.push_str(&format!("{}", params.len()));
 
                         output.push_str("<");
                         for param in params {
-                            output.push_str(self.compile_type(param).as_str());
+                            let ty = self.compile_type(param);
+                            let ty = Self::change_type_for_generic(ty.as_str());
+                            output.push_str(ty);
                             output.push_str(", ");
                         }
+                        let ty = self.compile_type(return_type);
+                        let ty = Self::change_type_for_generic(ty.as_str());
 
-                        output.push_str(self.compile_type(return_type).as_str());
+                        output.push_str(ty);
                         output.push_str(">");
                     }
                 }
@@ -490,6 +522,9 @@ impl JavaCodegenerator {
             }
             Type::Parameterized(name, params) => {
 
+                let params = params.iter().filter(|p| matches!(p, Type::Builtin(BuiltinType::Type))).collect::<Vec<_>>();
+
+                // Here we must handle the special case of the Array type.
                 match name.as_ref() {
                     Type::User(path) => {
                         let PathName { segments, .. } = path;
@@ -499,16 +534,19 @@ impl JavaCodegenerator {
                                 output.push_str("[]");
                                 return output;
                             }
+                            unreachable!("Array type must have a type parameter");
                         }
                     }
                     _ => {}
                 }
-
+                
                 
                 output.push_str(self.compile_type(name).as_str());
                 output.push_str("<");
                 for (i, param) in params.iter().enumerate() {
-                    output.push_str(self.compile_type(param).as_str());
+                    let ty = self.compile_type(param);
+                    let ty = Self::change_type_for_generic(ty.as_str());
+                    output.push_str(ty);
 
                     if i < params.len() - 1 {
                         output.push_str(", ");
@@ -524,9 +562,13 @@ impl JavaCodegenerator {
                     output.push_str("Tuple");
                     output.push_str(&len.to_string());
                     output.push_str("<");
-                    for ty in types {
-                        output.push_str(self.compile_type(ty).as_str());
-                        output.push_str(", ");
+                    for (i, ty) in types.iter().enumerate() {
+                        let ty = self.compile_type(ty);
+                        let ty = Self::change_type_for_generic(ty.as_str());
+                        output.push_str(ty);
+                        if i < len - 1 {
+                            output.push_str(", ");
+                        }
                     }
                     output.push_str(">");
                 }
@@ -537,6 +579,21 @@ impl JavaCodegenerator {
             _ => unreachable!("Possible Type should not be reached"),
         }
         output
+    }
+
+    fn change_type_for_generic<'a>(ty: &'a str) -> &'a str {
+        match ty {
+            "void" => "Void",
+            "int" => "Integer",
+            "boolean" => "Boolean",
+            "char" => "Character",
+            "byte" => "Byte",
+            "short" => "Short",
+            "long" => "Long",
+            "float" => "Float",
+            "double" => "Double",
+            x => x,
+        }
     }
 
     fn compile_function(&mut self, function: &sb_ast::core_annotated::Function) -> String {
