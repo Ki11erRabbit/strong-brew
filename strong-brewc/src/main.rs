@@ -81,7 +81,7 @@ fn main() {
     let mut env_grabbed_imports = grab_imports(&args, env_path.clone(), env_data.clone(), &env);
     env_grabbed_imports.extend(files);
     let files = env_grabbed_imports;
-    println!("{:#?}", files);
+    //println!("{:#?}", files);
     //parsed_files.push((&env_path, env)); 
 
     let mut parsed_files = Vec::new();
@@ -137,6 +137,7 @@ fn main() {
     let files = files.unwrap();
     let mut code_generator = JavaCodegenerator::new();
     for (file, name) in files.into_iter().zip(names) {
+        //println!("\t\t{}", name);
         let code_files = code_generator.generate(file);
 
         for (class_name, code) in code_files {
@@ -150,7 +151,7 @@ fn main() {
             let mut path = String::from(&args.cache_path);
             path.push('/');
             for item in split {
-                println!("{}", item);
+                //println!("{}", item);
                 if !item.contains('.') {
                     path.push_str(item);
                     path.push('/');
@@ -175,6 +176,10 @@ fn main() {
 
     std::fs::copy(start_path, &start_output_path).unwrap();
 
+    copy_library_files(&args, "tuples").unwrap();
+    copy_library_files(&args, "callables").unwrap();
+    copy_library_files(&args, "numbers").unwrap();
+
 
     let output = std::process::Command::new("javac")
         .arg("-d")
@@ -190,4 +195,23 @@ fn main() {
     
     println!("{}", stdout);
 
+}
+
+fn copy_library_files(args: &Args, name: &str) -> std::io::Result<()> {
+
+    let lib_path = format!("{}/{}", args.stdlib_path, name);
+    let lib_output_path = format!("{}/{}", args.cache_path, lib_path);
+
+    std::fs::create_dir_all(&lib_output_path)?;
+    
+    for dir in std::fs::read_dir(&lib_path)? {
+        let dir = dir?;
+
+
+        let path = dir.path();
+        let input_path = path.as_path().to_str().unwrap();
+        let output_path = format!("{}/{}", args.cache_path, dir.path().as_path().to_str().unwrap());
+        std::fs::copy(input_path, output_path)?;
+    }
+    Ok(())
 }

@@ -17,7 +17,7 @@ impl File {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
+#[derive(Debug, Clone, PartialOrd, Hash)]
 pub struct PathName {
     pub segments: Vec<String>,
     pub start: usize,
@@ -32,6 +32,12 @@ impl PathName {
             start,
             end,
         }
+    }
+}
+
+impl PartialEq for PathName {
+    fn eq(&self, other: &Self) -> bool {
+        self.segments == other.segments
     }
 }
 

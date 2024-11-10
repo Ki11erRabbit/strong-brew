@@ -396,14 +396,12 @@ impl <'a> TypeChecker<'a> {
         }
     }
 
+    /// Here we check to see if the type exists in the global types
     fn does_type_exist_annotated(&mut self, ty: Type) -> Result<core_annotated::Type, TypeError> {
         match ty {
             Type::User(PathName { ref segments, ref start, ref end }) => {
-                if segments.first().unwrap().len() == 1 {
+                if let Some(_) = self.get_type(&segments) {
                     return Ok(ty);
-                }
-                if let Some(ty) = self.get_type(&segments) {
-                    return Ok(ty.borrow().clone());
                 }
                 Err(TypeError::TypeDoesNotExist(segments.clone(), *start, *end))
             }

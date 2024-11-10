@@ -226,6 +226,13 @@ impl JavaCodegenerator {
 
         let sub_class = self.merge_subclasses();
 
+        if !pushed_class {
+            if 0 >= output.len() {
+                output.push((String::new(), output_string));
+            }
+            output[0].1.push_str(format!("public class {} {{\n", segments.last().unwrap()).as_str());
+        }
+        
         self.compile_subclass(&sub_class, &mut output[0].1);
 
         output[0].1.push_str("}\n");
@@ -521,8 +528,6 @@ impl JavaCodegenerator {
                 output.push_str(segments.join(".").as_str());
             }
             Type::Parameterized(name, params) => {
-
-                let params = params.iter().filter(|p| matches!(p, Type::Builtin(BuiltinType::Type))).collect::<Vec<_>>();
 
                 // Here we must handle the special case of the Array type.
                 match name.as_ref() {
