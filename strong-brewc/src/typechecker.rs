@@ -836,6 +836,9 @@ impl <'a> TypeChecker<'a> {
                 let vty = vty.clone();
                 let vty = vty.borrow();
                 if *vty == *ty {
+                    if vty.is_mut() {
+                        return Ok(Expression::new(expr, &vty));
+                    }
                     return Ok(Expression::new(expr, ty));
                 }
                 Err(TypeError::TypeMismatch(ty.clone(), vty.clone()))
@@ -845,6 +848,9 @@ impl <'a> TypeChecker<'a> {
                 let vty = vty.clone();
                 let vty = vty.borrow();
                 if *vty == *ty {
+                    if vty.is_mut() {
+                        return Ok(Expression::new(expr, &vty));
+                    }
                     return Ok(Expression::new(expr, ty));
                 }
                 Err(TypeError::TypeMismatch(ty.clone(), vty.clone()))
@@ -859,6 +865,9 @@ impl <'a> TypeChecker<'a> {
                     }
                     _ => {
                         if lit_ty == *ty {
+                            if lit_ty.is_mut() {
+                                return Ok(Expression::new(expr, &lit_ty));
+                            }
                             return Ok(Expression::new(expr, ty));
                         }
                     }

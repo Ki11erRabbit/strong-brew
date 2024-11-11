@@ -7,12 +7,14 @@ public class Mut <T> {
     }
 
     public T get() {
-        java.lang.System.out.println("get called");
         return value;
     }
     
     public void set(T value) {
-        java.lang.System.out.println("set called");
         this.value = value;
+    }
+    
+    public void set(Mut<T> value) {
+        this.value = value.get();
     }
 }

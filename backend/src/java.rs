@@ -773,8 +773,6 @@ impl JavaCodegenerator {
             ExpressionRaw::Variable(name) => {
                 let PathName { segments, .. } = name;
 
-                println!("{:?}", segments);
-                println!("{:?}", ty);
                 let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
                 output.push_str(segments.join(".").as_str());
 
@@ -794,6 +792,10 @@ impl JavaCodegenerator {
                 output.push_str(segments.join(".").as_str());
             }
             ExpressionRaw::Literal(lit) => {
+                // Here we wrap the value in a new Mut if it is a mutable variable.
+                if ty.borrow().is_mut() {
+                    output.push_str("new Mut<>(");
+                }
                 match lit {
                     Literal::Int(value) => {
                         match &*ty.borrow() {
@@ -870,6 +872,9 @@ impl JavaCodegenerator {
                     Literal::List(_) => {
                         unreachable!("List literal should be desugared")
                     }
+                }
+                if ty.borrow().is_mut() {
+                    output.push_str(")");
                 }
             }
             ExpressionRaw::Call(call) => {
