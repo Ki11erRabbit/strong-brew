@@ -1,6 +1,6 @@
 use petgraph::algo;
 use petgraph::graph::UnGraph;
-use sb_ast::core_annotated::{self, BuiltinType, Call, CallArg, Enum, Expression, ExpressionRaw, Field, Function, Import, Literal, Param, PathName, TopLevelStatement, Type};
+use sb_ast::core_annotated::{self, BuiltinType, Call, CallArg, Enum, Expression, ExpressionRaw, Field, Function, IfExpr, Import, Literal, Param, PathName, TopLevelStatement, Type};
 use sb_ast::core_lang;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -12,7 +12,7 @@ pub enum TypeError {
     TypeDoesNotExist(Vec<String>, usize, usize),
     PatternTypeMismatch(String),
     ParameterizedTypeWithoutName(usize, usize),
-    TypeMismatch(Type, Type),
+    TypeMismatch(Type, Type, usize, usize),
     ExpectedType(Type, Type),
     NotAType,
 }
@@ -716,7 +716,7 @@ impl <'a> TypeChecker<'a> {
                 Ok(ExpressionRaw::Tuple(Either::Left(exprs)))
             }
             core_lang::Expression::IfExpression(if_) => {
-                todo!("convert if")
+                Ok(ExpressionRaw::IfExpression(self.convert_if_expression(if_)?))
             }
             core_lang::Expression::MatchExpression(match_) => {
                 todo!("convert match")
@@ -733,6 +733,32 @@ impl <'a> TypeChecker<'a> {
             
         }
     }
+
+    fn convert_if_expression(
+        &mut self,
+        if_: &core_lang::IfExpr
+    ) -> Result<IfExpr, TypeError> {
+        let core_lang::IfExpr { condition, then_branch, else_branch, start, end } = if_;
+
+        let condition = self.convert_expression(&condition.as_ref())?;
+        let condition = self.check_expressions_type(condition, &Type::Builtin(BuiltinType::Bool))?;
+        let condition = Box::new(condition);
+        let statements = self.check_statements(then_branch)?;
+        match else_branch {
+            Some(Either::Left(if_)) => {
+                let if_ = self.convert_if_expression(if_)?;
+                Ok(IfExpr::new(condition, statements, Some(Either::Left(Box::new(if_))), *start, *end))
+            }
+            Some(Either::Right(else_)) => {
+                let else_ = self.check_statements(else_)?;
+                Ok(IfExpr::new(condition, statements, Some(Either::Right(else_)), *start, *end))
+            }
+            None => {
+                Ok(IfExpr::new(condition, statements, None, *start, *end))
+            }
+        }
+    }
+    
     fn get_expressions_type(
         &mut self,
         expr: ExpressionRaw,
@@ -802,8 +828,8 @@ impl <'a> TypeChecker<'a> {
                 Ok(Type::Tuple(exprs))
             }
             ExpressionRaw::Tuple(Either::Right(exprs)) => unreachable!("Tuple should not be annotated at this time"),
-            ExpressionRaw::IfExpression(_) => {
-                todo!("implement typechecking for if expressions")
+            ExpressionRaw::IfExpression(if_) => {
+                self.get_if_expression_type(if_)
             }
             ExpressionRaw::MatchExpression(_) => {
                 todo!("implement typechecking for match expressions")
@@ -818,6 +844,34 @@ impl <'a> TypeChecker<'a> {
         }
     }
 
+    fn get_if_expression_type(
+        &mut self,
+        if_: IfExpr
+    ) -> Result<Type, TypeError> {
+        let IfExpr { then_branch, else_branch, start, end, .. } = if_;
+
+        let then_branch = self.get_statements_type(&then_branch.last().unwrap())?;
+        let else_branch = match else_branch {
+            Some(Either::Left(if_)) => {
+                let else_branch = self.get_if_expression_type(*if_)?;
+                Some(Either::Left(Box::new(else_branch)))
+            }
+            Some(Either::Right(else_)) => {
+                let else_branch = self.get_statements_type(&else_.last().unwrap())?;
+                Some(Either::Right(else_branch))
+            }
+            None => None,
+        };
+
+        if let Some(Either::Right(else_branch)) = else_branch {
+            if then_branch != else_branch {
+                return Err(TypeError::TypeMismatch(then_branch, else_branch.clone(), start, end));
+            }
+        }
+
+        Ok(then_branch)
+    }
+
     fn check_expressions_type(
         &mut self,
         expr: ExpressionRaw,
@@ -829,7 +883,7 @@ impl <'a> TypeChecker<'a> {
                 if *ty == Type::Builtin(BuiltinType::Type) {
                     return Ok(Expression::new(expr, ty));
                 }
-                Err(TypeError::TypeMismatch(ty.clone(), tty.clone()))
+                Err(TypeError::TypeMismatch(ty.clone(), tty.clone(), 0, 0))
             }
             ExpressionRaw::Variable(ref name) => {
                 let vty = self.get_type(&name.segments).unwrap();
@@ -841,7 +895,7 @@ impl <'a> TypeChecker<'a> {
                     }
                     return Ok(Expression::new(expr, ty));
                 }
-                Err(TypeError::TypeMismatch(ty.clone(), vty.clone()))
+                Err(TypeError::TypeMismatch(ty.clone(), vty.clone(), 0, 0))
             }
             ExpressionRaw::Constant(ref name) => {
                 let vty = self.get_type(&name.segments).unwrap();
@@ -853,7 +907,7 @@ impl <'a> TypeChecker<'a> {
                     }
                     return Ok(Expression::new(expr, ty));
                 }
-                Err(TypeError::TypeMismatch(ty.clone(), vty.clone()))
+                Err(TypeError::TypeMismatch(ty.clone(), vty.clone(), 0, 0))
             }
             ExpressionRaw::Literal(ref lit) => {
                 let lit_ty = self.get_literal_type(&lit);
@@ -872,7 +926,7 @@ impl <'a> TypeChecker<'a> {
                         }
                     }
                 }
-                Err(TypeError::TypeMismatch(ty.clone(), lit_ty))
+                Err(TypeError::TypeMismatch(ty.clone(), lit_ty, 0, 0))
             }
             ExpressionRaw::Call(call) => {
                 let core_annotated::Call { name, type_args, args, start: cstart, end: cend } = call;
@@ -926,8 +980,9 @@ impl <'a> TypeChecker<'a> {
                 Ok(Expression::new(ExpressionRaw::Tuple(Either::Right(exprs)), ty))
             }
             ExpressionRaw::Tuple(Either::Right(exprs)) => unreachable!("Tuple should not be annotated at this time"),
-            ExpressionRaw::IfExpression(_) => {
-                todo!("implement typechecking for if expressions")
+            ExpressionRaw::IfExpression(if_) => {
+                let (if_, out_ty) = self.check_if_expression_type(if_, ty)?;
+                Ok(Expression::new(ExpressionRaw::IfExpression(if_), &out_ty))
             }
             ExpressionRaw::MatchExpression(_) => {
                 todo!("implement typechecking for match expressions")
@@ -940,6 +995,34 @@ impl <'a> TypeChecker<'a> {
             }
 
         }
+    }
+
+    fn check_if_expression_type(
+        &mut self,
+        if_: IfExpr,
+        ty: &Type
+    ) -> Result<(IfExpr, Type), TypeError> {
+        let IfExpr { condition, then_branch, else_branch, start, end, .. } = if_;
+
+        let (else_branch, else_type) = match else_branch {
+            Some(Either::Left(if_)) => {
+                let (else_branch, else_type) = self.check_if_expression_type(*if_, ty)?;
+                (Some(Either::Left(Box::new(else_branch))), else_type)
+            }
+            Some(Either::Right(else_)) => {
+                let else_type = self.get_statements_type(&else_.last().unwrap())?;
+                (Some(Either::Right(else_)), else_type)
+            }
+            None => (None, Type::Builtin(BuiltinType::Unit)),
+        };
+
+        let then_type = self.get_statements_type(&then_branch.last().unwrap())?;
+
+
+        if else_type == *ty && then_type == *ty {
+            return Ok((IfExpr::new(condition, then_branch, else_branch, start, end), ty.clone()));
+        }
+        Err(TypeError::TypeMismatch(ty.clone(), then_type, start, end))
     }
 
     fn check_functions(&mut self, functions: Vec<&core_lang::TopLevelStatement>) -> Result<Vec<TopLevelStatement>, TypeError> {
@@ -1106,8 +1189,9 @@ impl <'a> TypeChecker<'a> {
             }
             core_lang::Statement::Expression(expr) => {
                 let expr = self.convert_expression_type(&expr)?;
+                let expr_type = self.get_expressions_type(expr.clone())?;
 
-                let expr = self.check_expressions_type(expr, &Type::Builtin(BuiltinType::Unit))?;
+                let expr = self.check_expressions_type(expr, &expr_type)?;
                 Ok(core_annotated::Statement::Expression(expr))
             }
             core_lang::Statement::Let { name, ty, value, start, end } => {
@@ -1127,6 +1211,23 @@ impl <'a> TypeChecker<'a> {
                 }
 
                 Ok(core_annotated::Statement::new_let(pattern, ty, value, *start, *end))
+            }
+
+        }
+
+    }
+
+    fn get_statements_type(&mut self, statement: &core_annotated::Statement) -> Result<Type, TypeError> {
+        match statement {
+            core_annotated::Statement::Assignment { .. } => {
+                Ok(Type::Builtin(BuiltinType::Unit))
+            }
+            core_annotated::Statement::Expression(expr) => {
+                let Expression { raw, .. } = expr;
+                self.get_expressions_type(raw.clone())
+            }
+            core_annotated::Statement::Let { .. } => {
+                Ok(Type::Builtin(BuiltinType::Unit))
             }
 
         }
