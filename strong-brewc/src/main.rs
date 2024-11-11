@@ -176,6 +176,11 @@ fn main() {
 
     std::fs::copy(start_path, &start_output_path).unwrap();
 
+    let mut_path = format!("{}/Mut.java", args.stdlib_path);
+    let mut_output_path = format!("{}/strongbrew/Mut.java", args.cache_path);
+
+    std::fs::copy(mut_path, &mut_output_path).unwrap();
+
     copy_library_files(&args, "tuples").unwrap();
     copy_library_files(&args, "callables").unwrap();
     copy_library_files(&args, "numbers").unwrap();

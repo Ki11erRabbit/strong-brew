@@ -304,7 +304,7 @@ pub enum BuiltinType {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialOrd)]
 pub enum Type {
     /// User Types always begin with a capital letter
     User(PathName),
@@ -315,6 +315,64 @@ pub enum Type {
     PossibleType(Vec<Type>),
     Tuple(Vec<Type>),
     Expression(Box<Expression>),
+}
+
+impl Type {
+    pub fn is_mut(&self) -> bool {
+        match self {
+            Type::Parameterized(a, b) => {
+                let Type::User(a) = a.as_ref() else {
+                    unreachable!("Type::Parameterized should always contain a Type::User")
+                };
+                let PathName { segments, .. } = a;
+                segments.len() == 1 && segments[0] == "Mut"
+            }
+            _ => false,
+        }
+    }
+}
+
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Type::User(a), Type::User(b)) => a == b,
+            (Type::Builtin(a), Type::Builtin(b)) => a == b,
+            (Type::Parameterized(a, b), Type::Parameterized(c, d)) => a == c && b == d,
+            (Type::PossibleType(a), Type::PossibleType(b)) => a == b,
+            (Type::Tuple(a), Type::Tuple(b)) => a == b,
+            (Type::Expression(a), Type::Expression(b)) => a == b,
+            (Type::PossibleType(a), x) => {
+                a.iter().any(|y| y == x)
+            }
+            (x, Type::PossibleType(a)) => {
+                a.iter().any(|y| y == x)
+            }
+            (Type::Parameterized(a, b), x) => {
+                let Type::User(a) = a.as_ref() else {
+                    unreachable!("Type::Parameterized should always contain a Type::User")
+                };
+                let PathName { segments, .. } = a;
+                if segments.len() == 1 && segments[0] == "Mut" {
+                    b[0] == *x
+                } else {
+                    false
+                }
+            }
+            (x, Type::Parameterized(a, b)) => {
+                let Type::User(a) = a.as_ref() else {
+                    unreachable!("Type::Parameterized should always contain a Type::User")
+                };
+                let PathName { segments, .. } = a;
+                if segments.len() == 1 && segments[0] == "Mut" {
+                    b[0] == *x
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]

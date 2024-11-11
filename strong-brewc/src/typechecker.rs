@@ -733,6 +733,90 @@ impl <'a> TypeChecker<'a> {
             
         }
     }
+    fn get_expressions_type(
+        &mut self,
+        expr: ExpressionRaw,
+    ) -> Result<Type, TypeError> {
+
+        match expr {
+            ExpressionRaw::Type(ref tty) => {
+                return Ok(tty.clone());
+            }
+            ExpressionRaw::Variable(ref name) => {
+                let vty = self.get_type(&name.segments).unwrap();
+                let vty = vty.clone();
+                let vty = vty.borrow();
+                return Ok(vty.clone());
+            }
+            ExpressionRaw::Constant(ref name) => {
+                let vty = self.get_type(&name.segments).unwrap();
+                let vty = vty.clone();
+                let vty = vty.borrow();
+                return Ok(vty.clone());
+            }
+            ExpressionRaw::Literal(ref lit) => {
+                Ok(self.get_literal_type(&lit))
+            }
+            ExpressionRaw::Call(call) => {
+                let core_annotated::Call { name, type_args, args, start: cstart, end: cend } = call;
+                let ExpressionRaw::Variable(name) = *name else {
+                    unreachable!("Call name must be a variable")
+                };
+
+                let function = self.get_type(&name.segments).unwrap();
+                let function = function.clone();
+                let function = function.borrow();
+                let Type::Builtin(BuiltinType::Function { params, return_type }) = &*function else {
+                    todo!("report not a function error")
+                };
+
+                if params.len() != args.len() {
+                    todo!("report wrong number of arguments")
+                }
+
+                let args = args.into_iter().enumerate().map(|(i, x)| {
+                    let core_annotated::CallArg { name, value, start, end } = x;
+                    let Either::Left(value) = value else {
+                        unreachable!("CallArg value must not be annotated at this time")
+                    };
+                    let value = self.check_expressions_type(value, &params[i])?;
+                    Ok(CallArg::new(name, Either::Right(value), start, end))
+                }).collect::<Result<Vec<_>, _>>()?;
+
+                let return_type = return_type.clone();
+                Ok(*return_type.clone())
+            }
+            ExpressionRaw::Return(expr) => {
+                todo!("implement way to knoww what the return type is")
+            }
+            ExpressionRaw::Closure(closure) => {
+                todo!("implement typechecking for closures")
+            }
+            ExpressionRaw::Parenthesized(Either::Left(expr)) => {
+                let ty = self.get_expressions_type(*expr)?;
+                Ok(ty)
+            }
+            ExpressionRaw::Parenthesized(Either::Right(expr)) => unreachable!("Parenthesized should not be annotated at this time"),
+            ExpressionRaw::Tuple(Either::Left(exprs)) => {
+                let exprs = exprs.into_iter().map(|x| self.get_expressions_type(x)).collect::<Result<Vec<_>, _>>()?;
+                Ok(Type::Tuple(exprs))
+            }
+            ExpressionRaw::Tuple(Either::Right(exprs)) => unreachable!("Tuple should not be annotated at this time"),
+            ExpressionRaw::IfExpression(_) => {
+                todo!("implement typechecking for if expressions")
+            }
+            ExpressionRaw::MatchExpression(_) => {
+                todo!("implement typechecking for match expressions")
+            }
+            ExpressionRaw::UnaryOperation { operator, operand, start, end } => {
+                todo!("implement typechecking for unary operations")
+            }
+            ExpressionRaw::BinaryOperation { operator, left, right, start, end } => {
+                todo!("implement typechecking for binary operations")
+            }
+
+        }
+    }
 
     fn check_expressions_type(
         &mut self,
@@ -786,7 +870,7 @@ impl <'a> TypeChecker<'a> {
                 let ExpressionRaw::Variable(name) = *name else {
                     unreachable!("Call name must be a variable")
                 };
-                
+
                 let function = self.get_type(&name.segments).unwrap();
                 let function = function.clone();
                 let function = function.borrow();
@@ -1000,7 +1084,16 @@ impl <'a> TypeChecker<'a> {
     fn check_statement(&mut self, statement: &core_lang::Statement) -> Result<core_annotated::Statement, TypeError> {
         match statement {
             core_lang::Statement::Assignment { target, value, start, end } => {
-                todo!("Possibly remove assignments from core_lang")
+                let target = self.convert_expression_type(target)?;
+                let value = self.convert_expression_type(value)?;
+
+                let target_type = self.get_expressions_type(target.clone())?;
+                let value_type = self.get_expressions_type(value.clone())?;
+
+                let target = self.check_expressions_type(target, &value_type)?;
+                let value = self.check_expressions_type(value, &target_type)?;
+
+                Ok(core_annotated::Statement::new_assignment(target, value, *start, *end))
             }
             core_lang::Statement::Expression(expr) => {
                 let expr = self.convert_expression_type(&expr)?;

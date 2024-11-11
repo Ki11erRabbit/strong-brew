@@ -25,4 +25,8 @@ public abstract class SbNumber {
     public long longValue() {
         return value.longValue();
     }
+    @Override
+    public String toString() {
+        return value.toString();
+    }
 }

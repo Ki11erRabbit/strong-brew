@@ -10,6 +10,7 @@ static CORE_IMPORT: &str = "import static strongbrew.core.core.*;\n";
 static TUPLE_IMPORT: &str = "import strongbrew.tuples.*;\n";
 static CALLABLE_IMPORT: &str = "import strongbrew.callables.*;\n";
 static NUMBER_IMPORT: &str = "import strongbrew.numbers.*;\n";
+static MUT_IMPORT: &str = "import strongbrew.Mut;\n";
 
 pub struct SubClass(pub String, pub HashMap<String, SubClass>);
 
@@ -194,6 +195,7 @@ impl JavaCodegenerator {
         output_string.push_str(TUPLE_IMPORT);
         output_string.push_str(CALLABLE_IMPORT);
         output_string.push_str(NUMBER_IMPORT);
+        output_string.push_str(MUT_IMPORT);
 
 
         let mut statement_output = Vec::new();
@@ -426,7 +428,7 @@ impl JavaCodegenerator {
                 output.push_str(" ");
                 output.push_str(segments.last().unwrap().as_str());
                 output.push_str(" = ");
-                output.push_str(self.compile_expression(value).as_str());
+                output.push_str(self.compile_expression(value, true).as_str());
                 output.push_str(";\n");
 
                 output = if segments.len() > 1 {
@@ -728,7 +730,7 @@ impl JavaCodegenerator {
         for statement in statements {
             match statement {
                 Statement::Expression(expression) => {
-                    output.push_str(self.compile_expression(expression).as_str());
+                    output.push_str(self.compile_expression(expression, true).as_str());
                     output.push_str(";\n");
                 }
                 Statement::Let { name, ty, value, start, end } => {
@@ -741,17 +743,25 @@ impl JavaCodegenerator {
                     };
                     output.push_str(name);
                     output.push_str(" = ");
-                    output.push_str(self.compile_expression(value).as_str());
+                    output.push_str(self.compile_expression(value, true).as_str());
                     output.push_str(";\n");
 
                 }
-                _ => unreachable!("Only expression and let statements are allowed in function body"),
+                Statement::Assignment { target, value, start, end } => {
+                    // Here we must call the Mut method set so that we can updated the mut's value.
+                    // Only Mut is allowed for mutable variables.
+                    output.push_str(&self.compile_expression(target, false));
+                    output.push_str(".set(");
+                    output.push_str(&self.compile_expression(value, true));
+                    output.push_str(");\n");
+                }
             }
         }
         output
     }
 
-    fn compile_expression(&mut self, expr: &Expression) -> String {
+    /// rhs is Right Hand Side. It is to specify that it is on side that provides a value
+    fn compile_expression(&mut self, expr: &Expression, rhs: bool) -> String {
         let mut output = String::new();
 
         let Expression { raw, ty, .. } = expr;
@@ -762,8 +772,21 @@ impl JavaCodegenerator {
             }
             ExpressionRaw::Variable(name) => {
                 let PathName { segments, .. } = name;
+
+                println!("{:?}", segments);
+                println!("{:?}", ty);
                 let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
                 output.push_str(segments.join(".").as_str());
+
+                // Here, if we are on the left hand side and are a mut type then we
+                // mut access the inner value to get the value wrapped by mut.
+                if rhs {
+                    if ty.borrow().is_mut() {
+                        output.push_str(".get()")
+                    }
+                }
+
+                
             }
             ExpressionRaw::Constant(constant) => {
                 let PathName { segments, .. } = constant;
@@ -773,7 +796,57 @@ impl JavaCodegenerator {
             ExpressionRaw::Literal(lit) => {
                 match lit {
                     Literal::Int(value) => {
-                        output.push_str(&value);
+                        match &*ty.borrow() {
+                            Type::Builtin(BuiltinType::I8) |
+                            Type::Builtin(BuiltinType::I16) |
+                            Type::Builtin(BuiltinType::I32) |
+                            Type::Builtin(BuiltinType::I64) => {
+                                output.push_str(&value);
+                            }
+                            Type::Builtin(BuiltinType::Int) => {
+                                output.push_str("new Int(");
+                                output.push_str(&value.to_string());
+                                output.push_str(")");
+                            }
+                            Type::Builtin(BuiltinType::Nat) => {
+                                output.push_str("new Nat(");
+                                output.push_str(&value.to_string());
+                                output.push_str(")");
+                            }
+                            Type::Builtin(BuiltinType::F32) |
+                            Type::Builtin(BuiltinType::F64) => {
+                                output.push_str(&value);
+                            }
+                            x if x == &Type::Builtin(BuiltinType::I8) => {
+                                output.push_str(&value);
+                            }
+                            x if x == &Type::Builtin(BuiltinType::I16) => {
+                                output.push_str(&value);
+                            }
+                            x if x == &Type::Builtin(BuiltinType::I32) => {
+                                output.push_str(&value);
+                            }
+                            x if x == &Type::Builtin(BuiltinType::I64) => {
+                                output.push_str(&value);
+                            }
+                            x if x == &Type::Builtin(BuiltinType::Int) => {
+                                output.push_str("new Int(");
+                                output.push_str(&value.to_string());
+                                output.push_str(")");
+                            }
+                            x if x == &Type::Builtin(BuiltinType::Nat) => {
+                                output.push_str("new Nat(");
+                                output.push_str(&value.to_string());
+                                output.push_str(")");
+                            }
+                            x if x == &Type::Builtin(BuiltinType::F32) => {
+                                output.push_str(&value);
+                            }
+                            x if x == &Type::Builtin(BuiltinType::F64) => {
+                                output.push_str(&value);
+                            }
+                            _ => unreachable!("Internal error: Int literal should have a numeric type"),
+                        }
                     }
                     Literal::Float(value) => {
                         output.push_str(&value);
@@ -826,7 +899,7 @@ impl JavaCodegenerator {
         let Either::Right(value) = value else {
             unreachable!("Call Arg should have been typechecked");
         };
-        output.push_str(self.compile_expression(value).as_str());
+        output.push_str(self.compile_expression(value, true).as_str());
         output
     }
 }
@@ -835,6 +908,7 @@ impl Codegenerator<(String,String)> for JavaCodegenerator {
     fn generate(&mut self, file: sb_ast::core_annotated::File) -> Vec<(String, String)> {
         let mut output = Vec::new();
         self.compile_file(&file, &mut output);
+        self.sub_classes.clear();
         output
     }
 }

@@ -697,7 +697,7 @@ fn convert_statement<'a>(stmt: inner::Statement<'a>) -> Statement<'a> {
             Statement::new_let(name, ty, value, start, end)
         }
         inner::Statement::Assignment { target, value, start, end } => {
-            let target = convert_expression_type(target);
+            let target = convert_expression_type_member_to_call(target);
             let value = convert_expression_type_member_to_call(value);
             Statement::new_assignment(target, value, start, end)
         }

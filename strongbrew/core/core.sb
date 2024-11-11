@@ -10,3 +10,27 @@ pub extern "Java" fn print(string: String) = "
 pub extern "Java" fn println(string: String) = "
     java.lang.System.out.println(string);
 "
+
+pub extern "Java" fn I8::show(n: i8) -> String = "
+    return Byte.toString(n);
+"
+
+pub extern "Java" fn I16::show(n: i16) -> String = "
+    return Short.toString(n);
+"
+
+pub extern "Java" fn I32::show(n: i32) -> String = "
+    return Integer.toString(n);
+"
+
+pub extern "Java" fn I64::show(n: i64) -> String = "
+    return Long.toString(n);
+"
+
+pub extern "Java" fn Natural::show(n: nat) -> String = "
+    return n.toString();
+"
+
+pub extern "Java" fn Int::show(n: int) -> String = "
+    return n.toString();
+"
