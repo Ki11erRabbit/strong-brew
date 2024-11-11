@@ -1010,20 +1010,74 @@ impl <'a> TypeChecker<'a> {
                 (Some(Either::Left(Box::new(else_branch))), else_type)
             }
             Some(Either::Right(else_)) => {
-                let else_type = self.get_statements_type(&else_.last().unwrap())?;
+                let (else_, else_type) = self.check_statements_type(else_, ty)?;
                 (Some(Either::Right(else_)), else_type)
             }
             None => (None, Type::Builtin(BuiltinType::Unit)),
         };
 
-        let then_type = self.get_statements_type(&then_branch.last().unwrap())?;
+        let (then_branch, then_type) = self.check_statements_type(then_branch, ty)?;
 
 
         if else_type == *ty && then_type == *ty {
+            println!("then_type: {:?}, else_type: {:?}", then_type, else_type);
+            println!("ty: {:?}", ty);
             return Ok((IfExpr::new(condition, then_branch, else_branch, start, end), ty.clone()));
         }
         Err(TypeError::TypeMismatch(ty.clone(), then_type, start, end))
     }
+
+    /// This function checks if the last statement's type matches the expected type
+    fn check_statements_type(
+        &mut self,
+        statements: Vec<core_annotated::Statement>,
+        ty: &Type
+    ) -> Result<(Vec<core_annotated::Statement>, Type), TypeError> {
+        let mut output = Vec::new();
+        let statements_len = statements.len();
+        for (i, statement) in statements.into_iter().enumerate() {
+            if i == statements_len - 1 {
+                let statement = self.check_statement_type(&statement, ty)?;
+                output.push(statement);
+
+                return Ok((output, ty.clone()));
+            }
+            output.push(statement);
+        }
+
+        unreachable!("The last statement should have been returned")
+    }
+
+    fn check_statement_type(
+        &mut self,
+        statement: &core_annotated::Statement,
+        ty: &Type
+    ) -> Result<core_annotated::Statement, TypeError> {
+        match statement {
+            core_annotated::Statement::Expression(expr) => {
+                let Expression { ty: e_ty, raw } = self.check_expressions_type(expr.raw.clone(), ty)?;
+                if *ty == *e_ty.borrow() {
+                    let statement = core_annotated::Statement::Expression(Expression::new(raw.clone(), ty));
+                    return Ok(statement);
+                } else {
+                    return Err(TypeError::TypeMismatch(ty.clone(), e_ty.borrow().clone(), 0, 0));
+                }
+            }
+            core_annotated::Statement::Assignment { .. } => {
+                if ty == &Type::Builtin(BuiltinType::Unit) {
+                    return Ok(statement.clone());
+                }
+            }
+            core_annotated::Statement::Let { .. } => {
+                if ty == &Type::Builtin(BuiltinType::Unit) {
+                    return Ok(statement.clone());
+                }
+            }
+        }
+        Err(TypeError::TypeMismatch(ty.clone(), Type::Builtin(BuiltinType::Unit), 0, 0))
+        
+    }
+            
 
     fn check_functions(&mut self, functions: Vec<&core_lang::TopLevelStatement>) -> Result<Vec<TopLevelStatement>, TypeError> {
         let mut result = Vec::new();

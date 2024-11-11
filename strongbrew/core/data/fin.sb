@@ -1,8 +1,8 @@
 module strongbrew::core::data::fin;
 
 
-pub enum Fin[nat::Succ(k): nat] {
-    Zero,
-    Succ(f: Fin[k]),
+pub enum Fin[N: nat] {
+    Zero -> Fin[nat::Succ(N)],
+    Succ(f: Fin[N]) -> Fin[nat::Succ(N)]
 }
 

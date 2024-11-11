@@ -385,6 +385,13 @@ impl Expression {
     pub fn new(raw: ExpressionRaw, ty: &Type) -> Expression {
         Expression { raw, ty: Rc::new(RefCell::new(ty.clone())) }
     }
+
+    pub fn is_if_or_match(&self) -> bool {
+        match &self.raw {
+            ExpressionRaw::IfExpression(_) | ExpressionRaw::MatchExpression(_) => true,
+            _ => false,
+        }
+    }
 }
 
 

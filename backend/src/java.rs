@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use sb_ast::core_annotated::{BuiltinType, CallArg, Enum, Expression, ExpressionRaw, File, Function, GenericParam, Import, Literal, Param, PathName, Pattern, Statement, TopLevelStatement, Type, Variant, Visibility};
+use sb_ast::core_annotated::{BuiltinType, CallArg, Enum, Expression, ExpressionRaw, File, Function, GenericParam, IfExpr, Import, Literal, Param, PathName, Pattern, Statement, TopLevelStatement, Type, Variant, Visibility};
 
 use either::Either;
 use crate::Codegenerator;
@@ -11,6 +11,15 @@ static TUPLE_IMPORT: &str = "import strongbrew.tuples.*;\n";
 static CALLABLE_IMPORT: &str = "import strongbrew.callables.*;\n";
 static NUMBER_IMPORT: &str = "import strongbrew.numbers.*;\n";
 static MUT_IMPORT: &str = "import strongbrew.Mut;\n";
+
+#[derive(Debug, Clone)]
+pub enum InLetBinding<'a> {
+    /// Not Applicable
+    NA,
+    Yes(&'a Pattern),
+    No(&'a Expression),
+}
+
 
 pub struct SubClass(pub String, pub HashMap<String, SubClass>);
 
@@ -428,7 +437,7 @@ impl JavaCodegenerator {
                 output.push_str(" ");
                 output.push_str(segments.last().unwrap().as_str());
                 output.push_str(" = ");
-                output.push_str(self.compile_expression(value, true).as_str());
+                output.push_str(self.compile_expression(value, true, InLetBinding::NA).as_str());
                 output.push_str(";\n");
 
                 output = if segments.len() > 1 {
@@ -655,7 +664,7 @@ impl JavaCodegenerator {
                     }
                 }
                 output.push_str(") {\n");
-                output.push_str(self.compile_statements(body).as_str());
+                output.push_str(self.compile_statements(body, false, InLetBinding::NA).as_str());
                 output.push_str("}\n");
 
                 output = if segments.len() > 1 {
@@ -725,34 +734,95 @@ impl JavaCodegenerator {
         output
     }
 
-    fn compile_statements(&mut self, statements: &Vec<sb_ast::core_annotated::Statement>) -> String{
+    fn compile_statements(
+        &mut self,
+        statements: &Vec<sb_ast::core_annotated::Statement>,
+        rhs: bool,
+        in_let: InLetBinding
+
+    ) -> String{
         let mut output = String::new();
-        for statement in statements {
+        for (i, statement) in statements.iter().enumerate() {
             match statement {
                 Statement::Expression(expression) => {
-                    output.push_str(self.compile_expression(expression, true).as_str());
+                    if i == statements.len() - 1 {
+                        match &in_let {
+                            InLetBinding::NA => {
+                                output.push_str(self.compile_expression(expression, true, InLetBinding::NA).as_str());
+                                output.push_str(";\n");
+                            }
+                            InLetBinding::Yes(name) => {
+                                if expression.is_if_or_match() {
+                                    output.push_str(self.compile_expression(expression, true, in_let).as_str());
+                                    break;
+                                }
+
+                                match name {
+                                    Pattern::Variable(name) => {
+                                        output.push_str(name);
+                                        output.push_str(" = ");
+
+                                        output.push_str(&self.compile_expression(expression, true, InLetBinding::NA));
+
+                                        output.push_str(";\n");
+                                    }
+                                    _ => todo!("Implement pattern matching for let statement"),
+                                }
+                            }
+                            InLetBinding::No(expr) => {
+                                if expression.is_if_or_match() {
+                                    output.push_str(self.compile_expression(expression, true, in_let).as_str());
+                                    break;
+                                }
+
+                                output.push_str(&self.compile_expression(expr, true, InLetBinding::NA));
+                                output.push_str(".set(");
+
+                                output.push_str(&self.compile_expression(expression, true, InLetBinding::NA));
+                                output.push_str(");\n");
+
+                            }
+                        }
+                        break;
+
+                    }
+                    output.push_str(self.compile_expression(expression, true, InLetBinding::NA).as_str());
                     output.push_str(";\n");
+                    
                 }
                 Statement::Let { name, ty, value, start, end } => {
                     output.push_str("final ");
                     output.push_str(self.compile_type(ty).as_str());
                     output.push_str(" ");
-                    let name = match name {
+                    let name_out = match name {
                         Pattern::Variable(name) => name,
                         _ => todo!("Implement pattern matching for let statement"),
                     };
-                    output.push_str(name);
+                    if value.is_if_or_match() {
+                        output.push_str(name_out);
+
+                        output.push_str(";\n");
+
+                        output.push_str(&self.compile_expression(value, true, InLetBinding::Yes(name)));
+
+                        continue;
+                    }
+                    output.push_str(name_out);
                     output.push_str(" = ");
-                    output.push_str(self.compile_expression(value, true).as_str());
+                    output.push_str(self.compile_expression(value, true, InLetBinding::NA).as_str());
                     output.push_str(";\n");
 
                 }
                 Statement::Assignment { target, value, start, end } => {
                     // Here we must call the Mut method set so that we can updated the mut's value.
                     // Only Mut is allowed for mutable variables.
-                    output.push_str(&self.compile_expression(target, false));
+                    if value.is_if_or_match() {
+                        output.push_str(&self.compile_expression(value, true, InLetBinding::No(target)));
+                        continue;
+                    }
+                    output.push_str(&self.compile_expression(target, false, InLetBinding::NA));
                     output.push_str(".set(");
-                    output.push_str(&self.compile_expression(value, true));
+                    output.push_str(&self.compile_expression(value, true, InLetBinding::NA));
                     output.push_str(");\n");
                 }
             }
@@ -761,7 +831,14 @@ impl JavaCodegenerator {
     }
 
     /// rhs is Right Hand Side. It is to specify that it is on side that provides a value
-    fn compile_expression(&mut self, expr: &Expression, rhs: bool) -> String {
+    /// variable is the value that must be bound to since in Java if is not an if expression
+    /// that can take multiple statements.
+    fn compile_expression(
+        &mut self,
+        expr: &Expression,
+        rhs: bool,
+        variable: InLetBinding
+    ) -> String {
         let mut output = String::new();
 
         let Expression { raw, ty, .. } = expr;
@@ -893,8 +970,36 @@ impl JavaCodegenerator {
                 }
                 output.push_str(")");
             }
+            ExpressionRaw::IfExpression(if_) => {
+                output.push_str(&self.compile_if_expr(if_, rhs, variable));
+            }
             _ => todo!("Implement other expressions"),
         }
+        output
+    }
+
+    fn compile_if_expr(&mut self, expr: &IfExpr, rhs: bool, variable: InLetBinding) -> String {
+        let mut output = String::new();
+
+        let IfExpr { condition, then_branch, else_branch, .. } = expr;
+        output.push_str("if (");
+        output.push_str(&self.compile_expression(&condition.as_ref(), rhs, InLetBinding::NA));
+        output.push_str(") {\n");
+        output.push_str(&self.compile_statements(then_branch, rhs, variable.clone()));
+
+        match else_branch {
+            Some(Either::Left(expr)) => {
+                output.push_str("\n} else ");
+                output.push_str(&self.compile_if_expr(expr, rhs, variable.clone()));
+            }
+            Some(Either::Right(statements)) => {
+                output.push_str("\n} else {\n");
+                output.push_str(&self.compile_statements(statements, rhs, variable.clone()));
+            }
+            None => {}
+        }
+        output.push_str("\n}");
+
         output
     }
 
@@ -904,7 +1009,7 @@ impl JavaCodegenerator {
         let Either::Right(value) = value else {
             unreachable!("Call Arg should have been typechecked");
         };
-        output.push_str(self.compile_expression(value, true).as_str());
+        output.push_str(self.compile_expression(value, true, InLetBinding::NA).as_str());
         output
     }
 }
