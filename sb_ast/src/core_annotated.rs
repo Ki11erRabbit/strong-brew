@@ -502,6 +502,7 @@ impl Call {
     ) -> Call {
         Call { name, type_args, args, start, end }
     }
+
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -515,6 +516,17 @@ pub struct CallArg {
 impl CallArg {
     pub fn new<'a>(name: Option<String>, value: Either<ExpressionRaw, Expression>, start: usize, end: usize) -> CallArg {
         CallArg { name, value, start, end }
+    }
+
+    pub fn get_type(&self) -> Type {
+        match &self.value {
+            Either::Left(_) => {
+                panic!("Cannot get type of an expression raw")
+            }
+            Either::Right(expr) => {
+                expr.ty.borrow().clone()
+            }
+        }
     }
 }
 

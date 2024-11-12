@@ -818,7 +818,7 @@ fn convert_call_expr<'a>(call: inner::Call<'a>) -> Call<'a> {
     let name = match name {
         Expression::MemberAccess { object, field, start, end } => {
             let object = convert_member_access_to_call(*object);
-            first_arg.push(object);
+            first_arg.push(CallArg::new(None, object, 0, 0));
             Expression::Variable(PathName::new(vec![field], start, end))
         }
         x => x,
@@ -831,6 +831,8 @@ fn convert_call_expr<'a>(call: inner::Call<'a>) -> Call<'a> {
         let value = convert_expression(value);
         CallArg::new(name, value, start, end)
     }).collect();
+    first_arg.append(&mut args);
+    let mut args = first_arg;
 
     for lambda in lambdas {
         args.push(CallArg::new(None, Expression::Closure(convert_lambda(lambda)), 0, 0));
@@ -844,7 +846,8 @@ fn convert_member_access_to_call<'a>(expr: Expression<'a>) -> Expression<'a> {
         Expression::MemberAccess { object, field, start, end } => {
             let object = convert_member_access_to_call(*object);
             let name = Expression::Variable(PathName::new(vec![field], start, end));
-            Expression::Call(Call::new(Box::new(name), vec![], vec![CallArg::new(None, object, 0, 0)], 0, 0))
+            let expr = Expression::Call(Call::new(Box::new(name), vec![], vec![CallArg::new(None, object, 0, 0)], 0, 0));
+            expr
         }
         x => x,
     }

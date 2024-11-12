@@ -80,6 +80,12 @@ impl JavaCodegenerator {
                 '!' => {
                     output.push_str("_bang_");
                 }
+                '[' => {
+                    output.push_str("_bracket_open");
+                }
+                ']' => {
+                    output.push_str("_bracket_close");
+                }
                 _ => {
                     output.push(c);
                 }

@@ -1,6 +1,6 @@
 use petgraph::algo;
 use petgraph::graph::UnGraph;
-use sb_ast::core_annotated::{self, BuiltinType, Call, CallArg, Enum, Expression, ExpressionRaw, Field, Function, IfExpr, Import, Literal, Param, PathName, TopLevelStatement, Type};
+use sb_ast::core_annotated::{self, BinaryOperator, BuiltinType, Call, CallArg, Enum, Expression, ExpressionRaw, Field, Function, IfExpr, Import, Literal, Param, PathName, TopLevelStatement, Type, UnaryOperator};
 use sb_ast::core_lang;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -15,6 +15,9 @@ pub enum TypeError {
     TypeMismatch(Type, Type, usize, usize),
     ExpectedType(Type, Type),
     NotAType,
+    UnaryOperatorNotDefined(String, usize, usize),
+    BinaryOperatorNotDefined(String, usize, usize),
+    FunctionDoesNotExist(Vec<String>, usize, usize),
 }
 
 fn generate_internal_globals() -> HashMap<Vec<String>, Rc<RefCell<Type>>> {
@@ -62,15 +65,15 @@ fn create_function_type(params: Vec<Param>, return_type: Type) -> Type {
     })
 }
 
-pub struct TypeChecker<'a> {
-    overloads: HashMap<&'a str, Vec<&'a Vec<String>>>,
+pub struct TypeChecker {
+    overloads: HashMap<String, Vec<Vec<String>>>,
     global_types: HashMap<Vec<String>, Rc<RefCell<Type>>>,
     local_types: Vec<HashMap<Vec<String>, Rc<RefCell<Type>>>>,
     seen_files: HashSet<String>,
     current_return_type: Option<Type>,
 }
 
-impl <'a> TypeChecker<'a> {
+impl TypeChecker {
     pub fn new() -> Self {
         Self {
             overloads: HashMap::new(),
@@ -79,6 +82,24 @@ impl <'a> TypeChecker<'a> {
             seen_files: HashSet::new(),
             current_return_type: None,
         }
+    }
+    pub fn add_overload<S, R>(&mut self, name: S, overload: &Vec<R>)
+    where S: AsRef<str>, R: AsRef<str> {
+        let name = name.as_ref();
+        let overload = overload.into_iter().map(|x| x.as_ref().to_string()).collect();
+        match self.overloads.entry(name.to_string()) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                entry.get_mut().push(overload);
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(vec![overload]);
+            }
+        }
+    }
+
+    pub fn get_overloads<S>(&self, name: S) -> Option<&Vec<Vec<String>>>
+    where S: AsRef<str> {
+        self.overloads.get(name.as_ref())
     }
 
     pub fn add_global_type<S>(&mut self, name: &Vec<S>, ty: Rc<RefCell<Type>>)
@@ -524,7 +545,7 @@ impl <'a> TypeChecker<'a> {
                 todo!("implement type reducing for calls")
             }
             core_lang::Expression::Tuple(tuple) => {
-                let tuple = tuple.iter().map(|x| self.convert_expression_type(x)).collect::<Result<Vec<_>, _>>()?;
+                let tuple = tuple.iter().map(|x| self.convert_expression_type(x, true)).collect::<Result<Vec<_>, _>>()?;
 
                 let tuple = tuple.into_iter().map(|x| {
                     match x {
@@ -587,7 +608,7 @@ impl <'a> TypeChecker<'a> {
             core_lang::Literal::String(s) => Ok(Literal::String(s.to_string())),
             core_lang::Literal::Unit => Ok(Literal::Unit),
             core_lang::Literal::List(l) => {
-                let l = l.iter().map(|x| self.convert_expression(x)).collect::<Result<Vec<_>, _>>()?;
+                let l = l.iter().map(|x| self.convert_expression(x, true)).collect::<Result<Vec<_>, _>>()?;
                 Ok(Literal::List(l))
             }
         }
@@ -627,9 +648,9 @@ impl <'a> TypeChecker<'a> {
                 let name = PathName::new(segments.clone(), *tstart, *tend);
                 let visibility = Self::convert_visibility(visibility);
                 let ty = self.does_type_exist_type(ty)?;
-                let value = self.convert_expression_type(value)?;
+                let value = self.convert_expression_type(value, true)?;
 
-                let value = self.check_expressions_type(value, &ty)?;
+                let value = self.check_expressions_type(value, &ty, true)?;
 
                 self.add_global_type(&segments, Rc::new(RefCell::new(ty.clone())));
                 
@@ -639,9 +660,9 @@ impl <'a> TypeChecker<'a> {
         }).collect()
     }
 
-    fn convert_expression_type(&mut self, expr: &core_lang::ExpressionType) -> Result<ExpressionRaw, TypeError> {
+    fn convert_expression_type(&mut self, expr: &core_lang::ExpressionType, rhs: bool) -> Result<ExpressionRaw, TypeError> {
         let core_lang::ExpressionType { expression, variadic } = expr;
-        let expr = self.convert_expression(expression)?;
+        let expr = self.convert_expression(expression, rhs)?;
 
         if *variadic {
             match expr {
@@ -657,7 +678,8 @@ impl <'a> TypeChecker<'a> {
 
     fn convert_expression(
         &mut self,
-        expr: &core_lang::Expression
+        expr: &core_lang::Expression,
+        rhs: bool,
     ) -> Result<ExpressionRaw, TypeError> {
 
         match expr {
@@ -683,19 +705,21 @@ impl <'a> TypeChecker<'a> {
             }
             core_lang::Expression::Call(call) => {
                 let core_lang::Call { name, type_args, args, start, end } = call;
-                let function = self.convert_expression(name)?;
+                let function = self.convert_expression(name, rhs)?;
                 let type_args = type_args.iter().map(|x| self.reduce_to_type_expression_type(x)).collect::<Result<Vec<_>, _>>()?;
                 let args = args.iter().map(|x| {
                     let core_lang::CallArg { name, value, start, end } = x;
                     let name = name.map(|x| x.to_string());
-                    let value = self.convert_expression(value)?;
+                    let value = self.convert_expression(value, rhs)?;
                     Ok(CallArg::new(name, Either::Left(value), *start, *end))
                 }).collect::<Result<Vec<_>, _>>()?;
+
+                
                 Ok(ExpressionRaw::Call(Call::new(Box::new(function), type_args,  args, *start, *end)))
             }
             core_lang::Expression::Return(expr) => {
                 let expr = expr.as_ref().map(|x| {
-                    match self.convert_expression(&x) {
+                    match self.convert_expression(&x, rhs) {
                         Ok(x) => Ok(Either::Left(Box::new(x))),
                         Err(e) => Err(e),
                     }
@@ -706,26 +730,53 @@ impl <'a> TypeChecker<'a> {
                 todo!("convert closures")
             }
             core_lang::Expression::Parenthesized(expr) => {
-                let expr = self.convert_expression(expr)?;
+                let expr = self.convert_expression(expr, rhs)?;
                 Ok(ExpressionRaw::Parenthesized(Either::Left(Box::new(expr))))
             }
             core_lang::Expression::Tuple(exprs) => {
                 let exprs = exprs.iter()
-                    .map(|x| self.convert_expression_type(&x))
+                    .map(|x| self.convert_expression_type(&x, rhs))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(ExpressionRaw::Tuple(Either::Left(exprs)))
             }
             core_lang::Expression::IfExpression(if_) => {
-                Ok(ExpressionRaw::IfExpression(self.convert_if_expression(if_)?))
+                Ok(ExpressionRaw::IfExpression(self.convert_if_expression(if_, rhs)?))
             }
             core_lang::Expression::MatchExpression(match_) => {
                 todo!("convert match")
             }
             core_lang::Expression::UnaryOperation { operator, operand, start, end } => {
-                todo!("convert unary operation")
+                let operator = match operator {
+                    core_lang::UnaryOperator::Neg => UnaryOperator::Neg,
+                    core_lang::UnaryOperator::Not => UnaryOperator::Not,
+                    core_lang::UnaryOperator::Try => UnaryOperator::Try,
+                };
+                let operand = self.convert_expression(operand, rhs)?;
+                Ok(ExpressionRaw::UnaryOperation { operator, operand: Box::new(operand), start: *start, end: *end })
             }
             core_lang::Expression::BinaryOperation { operator, left, right, start, end } => {
-                todo!("convert binary operation")
+                let operator = match operator {
+                    core_lang::BinaryOperator::Add => BinaryOperator::Add,
+                    core_lang::BinaryOperator::Sub => BinaryOperator::Sub,
+                    core_lang::BinaryOperator::Mul => BinaryOperator::Mul,
+                    core_lang::BinaryOperator::Div => BinaryOperator::Div,
+                    core_lang::BinaryOperator::Mod => BinaryOperator::Mod,
+                    core_lang::BinaryOperator::And => BinaryOperator::And,
+                    core_lang::BinaryOperator::Or => BinaryOperator::Or,
+                    core_lang::BinaryOperator::Eq => BinaryOperator::Eq,
+                    core_lang::BinaryOperator::Ne => BinaryOperator::Ne,
+                    core_lang::BinaryOperator::Lt => BinaryOperator::Lt,
+                    core_lang::BinaryOperator::Le => BinaryOperator::Le,
+                    core_lang::BinaryOperator::Gt => BinaryOperator::Gt,
+                    core_lang::BinaryOperator::Ge => BinaryOperator::Ge,
+                    core_lang::BinaryOperator::Concat => BinaryOperator::Concat,
+                    core_lang::BinaryOperator::Index => BinaryOperator::Index,
+                };
+
+                let left = self.convert_expression(left, rhs)?;
+                let right = self.convert_expression(right, rhs)?;
+
+                Ok(ExpressionRaw::BinaryOperation { operator, left: Box::new(left), right: Box::new(right), start: *start, end: *end })
             }
             _ => {
                 todo!("remove member access from core_lang")
@@ -736,17 +787,18 @@ impl <'a> TypeChecker<'a> {
 
     fn convert_if_expression(
         &mut self,
-        if_: &core_lang::IfExpr
+        if_: &core_lang::IfExpr,
+        rhs: bool,
     ) -> Result<IfExpr, TypeError> {
         let core_lang::IfExpr { condition, then_branch, else_branch, start, end } = if_;
 
-        let condition = self.convert_expression(&condition.as_ref())?;
-        let condition = self.check_expressions_type(condition, &Type::Builtin(BuiltinType::Bool))?;
+        let condition = self.convert_expression(&condition.as_ref(), rhs)?;
+        let condition = self.check_expressions_type(condition, &Type::Builtin(BuiltinType::Bool), rhs)?;
         let condition = Box::new(condition);
         let statements = self.check_statements(then_branch)?;
         match else_branch {
             Some(Either::Left(if_)) => {
-                let if_ = self.convert_if_expression(if_)?;
+                let if_ = self.convert_if_expression(if_, rhs)?;
                 Ok(IfExpr::new(condition, statements, Some(Either::Left(Box::new(if_))), *start, *end))
             }
             Some(Either::Right(else_)) => {
@@ -762,6 +814,7 @@ impl <'a> TypeChecker<'a> {
     fn get_expressions_type(
         &mut self,
         expr: ExpressionRaw,
+        rhs: bool,
     ) -> Result<Type, TypeError> {
 
         match expr {
@@ -789,9 +842,35 @@ impl <'a> TypeChecker<'a> {
                     unreachable!("Call name must be a variable")
                 };
 
-                let function = self.get_type(&name.segments).unwrap();
-                let function = function.clone();
+                let mut function_rc = self.get_type(&name.segments).unwrap();
+
+                if name.segments.len() == 1 {
+                    let name = name.segments[0].clone();
+                    if let Some(overloads) = self.get_overloads(&name) {
+                        for overload in overloads {
+                            let function = self.get_type(&overload);
+                            if function.is_none() {
+                                continue;
+                            }
+                            let function_rc_inner = function.unwrap();
+                            let function = function_rc_inner.borrow();
+
+                            let Type::Builtin(BuiltinType::Function { params, .. }) = &*function else {
+                                continue;
+                            };
+
+                            if params.len() != args.len() {
+                                continue;
+                            }
+
+                            function_rc = function_rc_inner.clone();
+                        }
+                    }
+                }
+                let function = function_rc.clone();
                 let function = function.borrow();
+                
+                
                 let Type::Builtin(BuiltinType::Function { params, return_type }) = &*function else {
                     todo!("report not a function error")
                 };
@@ -805,7 +884,7 @@ impl <'a> TypeChecker<'a> {
                     let Either::Left(value) = value else {
                         unreachable!("CallArg value must not be annotated at this time")
                     };
-                    let value = self.check_expressions_type(value, &params[i])?;
+                    let value = self.check_expressions_type(value, &params[i], rhs)?;
                     Ok(CallArg::new(name, Either::Right(value), start, end))
                 }).collect::<Result<Vec<_>, _>>()?;
 
@@ -819,12 +898,12 @@ impl <'a> TypeChecker<'a> {
                 todo!("implement typechecking for closures")
             }
             ExpressionRaw::Parenthesized(Either::Left(expr)) => {
-                let ty = self.get_expressions_type(*expr)?;
+                let ty = self.get_expressions_type(*expr, rhs)?;
                 Ok(ty)
             }
             ExpressionRaw::Parenthesized(Either::Right(expr)) => unreachable!("Parenthesized should not be annotated at this time"),
             ExpressionRaw::Tuple(Either::Left(exprs)) => {
-                let exprs = exprs.into_iter().map(|x| self.get_expressions_type(x)).collect::<Result<Vec<_>, _>>()?;
+                let exprs = exprs.into_iter().map(|x| self.get_expressions_type(x, rhs)).collect::<Result<Vec<_>, _>>()?;
                 Ok(Type::Tuple(exprs))
             }
             ExpressionRaw::Tuple(Either::Right(exprs)) => unreachable!("Tuple should not be annotated at this time"),
@@ -835,10 +914,83 @@ impl <'a> TypeChecker<'a> {
                 todo!("implement typechecking for match expressions")
             }
             ExpressionRaw::UnaryOperation { operator, operand, start, end } => {
-                todo!("implement typechecking for unary operations")
+                let operator = match operator {
+                    UnaryOperator::Neg => "-",
+                    UnaryOperator::Not => "!",
+                    UnaryOperator::Try => "?",
+                };
+                let operand_ty = self.get_expressions_type(*operand.clone(), true)?;
+
+                let overloads = self.get_overloads(operator);
+                if overloads.is_none() {
+                    return Err(TypeError::UnaryOperatorNotDefined(operator.to_string(), start, end));
+                }
+                let overloads = overloads.unwrap();
+                for overload in overloads {
+                    let function = self.get_type(&overload);
+                    if function.is_none() {
+                        continue;
+                    }
+                    let function = function.unwrap();
+                    let function = function.borrow();
+
+                    let Type::Builtin(BuiltinType::Function { params, return_type }) = &*function else {
+                        continue;
+                    };
+
+                    if params.len() == 1 && params[0] == operand_ty {
+                        return Ok(*return_type.clone());
+                    }
+                }
+
+                return Err(TypeError::UnaryOperatorNotDefined(operator.to_string(), start, end));
             }
             ExpressionRaw::BinaryOperation { operator, left, right, start, end } => {
-                todo!("implement typechecking for binary operations")
+                let operator = match operator {
+                    BinaryOperator::Add => "+",
+                    BinaryOperator::Sub => "-",
+                    BinaryOperator::Mul => "*",
+                    BinaryOperator::Div => "/",
+                    BinaryOperator::Mod => "%",
+                    BinaryOperator::And => "&&",
+                    BinaryOperator::Or => "||",
+                    BinaryOperator::Eq => "==",
+                    BinaryOperator::Ne => "!=",
+                    BinaryOperator::Lt => "<",
+                    BinaryOperator::Le => "<=",
+                    BinaryOperator::Gt => ">",
+                    BinaryOperator::Ge => ">=",
+                    BinaryOperator::Concat => "++",
+                    BinaryOperator::Index => if rhs { "get[]" } else { "set[]" },
+                };
+
+                let left_ty = self.get_expressions_type(*left.clone(), true)?;
+                let right_ty = self.get_expressions_type(*right.clone(), true)?;
+
+                let overloads = self.get_overloads(operator);
+                if overloads.is_none() {
+                    return Err(TypeError::BinaryOperatorNotDefined(operator.to_string(), start, end));
+                }
+                let overloads = overloads.unwrap();
+
+                for overload in overloads {
+                    let function = self.get_type(&overload);
+                    if function.is_none() {
+                        continue;
+                    }
+                    let function = function.unwrap();
+                    let function = function.borrow();
+
+                    let Type::Builtin(BuiltinType::Function { params, return_type }) = &*function else {
+                        continue;
+                    };
+
+                    if params.len() == 2 && params[0] == left_ty && params[1] == right_ty {
+                        return Ok(*return_type.clone());
+                    }
+                }
+
+                return Err(TypeError::BinaryOperatorNotDefined(operator.to_string(), start, end));
             }
 
         }
@@ -875,7 +1027,9 @@ impl <'a> TypeChecker<'a> {
     fn check_expressions_type(
         &mut self,
         expr: ExpressionRaw,
-        ty: &Type
+        ty: &Type,
+        rhs: bool
+
     ) -> Result<Expression, TypeError> {
 
         match expr {
@@ -934,7 +1088,61 @@ impl <'a> TypeChecker<'a> {
                     unreachable!("Call name must be a variable")
                 };
 
-                let function = self.get_type(&name.segments).unwrap();
+                let function = self.get_type(&name.segments);
+                let function = if let Some(function) = function {
+                    function
+                } else {
+                    let overloads = self.get_overloads(&name.segments.last().unwrap());
+                    if overloads.is_none() {
+                        return Err(TypeError::FunctionDoesNotExist(name.segments.clone(), cstart, cend));
+                    }
+                    let overloads = overloads.unwrap().clone();
+                    for overload in overloads {
+                        let function = self.get_type(&overload);
+                        if function.is_none() {
+                            continue;
+                        }
+                        let function = function.unwrap();
+                        let function = function.borrow();
+
+                        let Type::Builtin(BuiltinType::Function { params, return_type }) = &*function else {
+                            continue;
+                        };
+
+
+                        if params.len() == args.len() {
+
+
+                            let args = args.clone().into_iter().enumerate().map(|(i, x)| {
+                                let core_annotated::CallArg { name, value, start, end } = x;
+                                let Either::Left(value) = value else {
+                                    unreachable!("CallArg value must not be annotated at this time")
+                                };
+                                let value = self.check_expressions_type(value, &params[i], rhs)?;
+                                Ok(CallArg::new(name, Either::Right(value), start, end))
+                            }).collect::<Result<Vec<_>, TypeError>>();
+
+                            if args.is_err() {
+                                continue;
+                            }
+                            let args = args.unwrap();
+                            let name = PathName { segments: overload.clone(), start: cstart, end: cend };
+
+                            let expression = ExpressionRaw::Call(Call::new(
+                                Box::new(ExpressionRaw::Variable(name)),
+                                type_args,
+                                args,
+                                cstart,
+                                cend
+                            ));
+                            if *return_type.as_ref() == *ty {
+                                return Ok(Expression::new(expression, return_type.as_ref()));
+                            }
+                            return Err(TypeError::TypeMismatch(ty.clone(), return_type.as_ref().clone(), cstart, cend));
+                        }
+                    }
+                    return Err(TypeError::FunctionDoesNotExist(name.segments.clone(), cstart, cend));
+                };
                 let function = function.clone();
                 let function = function.borrow();
                 let Type::Builtin(BuiltinType::Function { params, return_type }) = &*function else {
@@ -950,7 +1158,7 @@ impl <'a> TypeChecker<'a> {
                     let Either::Left(value) = value else {
                         unreachable!("CallArg value must not be annotated at this time")
                     };
-                    let value = self.check_expressions_type(value, &params[i])?;
+                    let value = self.check_expressions_type(value, &params[i], rhs)?;
                     Ok(CallArg::new(name, Either::Right(value), start, end))
                 }).collect::<Result<Vec<_>, _>>()?;
 
@@ -971,12 +1179,12 @@ impl <'a> TypeChecker<'a> {
                 todo!("implement typechecking for closures")
             }
             ExpressionRaw::Parenthesized(Either::Left(expr)) => {
-                let expr = self.check_expressions_type(*expr, ty)?;
+                let expr = self.check_expressions_type(*expr, ty, rhs)?;
                 Ok(Expression::new(ExpressionRaw::Parenthesized(Either::Right(Box::new(expr))), ty))
             }
             ExpressionRaw::Parenthesized(Either::Right(expr)) => unreachable!("Parenthesized should not be annotated at this time"),
             ExpressionRaw::Tuple(Either::Left(exprs)) => {
-                let exprs = exprs.into_iter().map(|x| self.check_expressions_type(x, &Type::Builtin(BuiltinType::Type))).collect::<Result<Vec<_>, _>>()?;
+                let exprs = exprs.into_iter().map(|x| self.check_expressions_type(x, &Type::Builtin(BuiltinType::Type), rhs)).collect::<Result<Vec<_>, _>>()?;
                 Ok(Expression::new(ExpressionRaw::Tuple(Either::Right(exprs)), ty))
             }
             ExpressionRaw::Tuple(Either::Right(exprs)) => unreachable!("Tuple should not be annotated at this time"),
@@ -988,10 +1196,130 @@ impl <'a> TypeChecker<'a> {
                 todo!("implement typechecking for match expressions")
             }
             ExpressionRaw::UnaryOperation { operator, operand, start, end } => {
-                todo!("implement typechecking for unary operations")
+                let operator = match operator {
+                    UnaryOperator::Neg => "-",
+                    UnaryOperator::Not => "!",
+                    UnaryOperator::Try => "?",
+                };
+                let operand_ty = self.get_expressions_type(*operand.clone(), true)?;
+
+                let overloads = self.get_overloads(operator);
+                if overloads.is_none() {
+                    return Err(TypeError::UnaryOperatorNotDefined(operator.to_string(), start, end));
+                }
+                let overloads = overloads.unwrap();
+                let mut operand_type = None;
+                let mut overloaded_function = None;
+                for overload in overloads {
+                    let function = self.get_type(&overload);
+                    if function.is_none() {
+                        continue;
+                    }
+                    let function = function.unwrap();
+                    let function = function.borrow();
+
+                    let Type::Builtin(BuiltinType::Function { params, return_type }) = &*function else {
+                        continue;
+                    };
+
+                    if params.len() == 1 && params[0] == operand_ty {
+                        operand_type = Some(return_type.clone());
+                        overloaded_function = Some(overload.clone());
+                        if *return_type.as_ref() == *ty {
+                            break;
+                        }
+                    }
+                }
+                if let Some(operand_type) = operand_type {
+                    let Some(overload) = overloaded_function else {
+                        unreachable!("You forgot to set the overloaded function")
+                    };
+                    let operand = self.check_expressions_type(*operand, &operand_type, true)?;
+                    let expression = ExpressionRaw::Call(Call::new(
+                        Box::new(ExpressionRaw::Variable(PathName { segments: overload.clone(), start: 0, end: 0 })),
+                        vec![],
+                        vec![CallArg::new(None, Either::Right(operand), 0, 0)],
+                        start,
+                        end
+                    ));
+                    return Ok(Expression::new(expression, operand_type.as_ref()));
+                }
+
+                return Err(TypeError::UnaryOperatorNotDefined(operator.to_string(), start, end));
             }
             ExpressionRaw::BinaryOperation { operator, left, right, start, end } => {
-                todo!("implement typechecking for binary operations")
+                let operator = match operator {
+                    BinaryOperator::Add => "+",
+                    BinaryOperator::Sub => "-",
+                    BinaryOperator::Mul => "*",
+                    BinaryOperator::Div => "/",
+                    BinaryOperator::Mod => "%",
+                    BinaryOperator::And => "&&",
+                    BinaryOperator::Or => "||",
+                    BinaryOperator::Eq => "==",
+                    BinaryOperator::Ne => "!=",
+                    BinaryOperator::Lt => "<",
+                    BinaryOperator::Le => "<=",
+                    BinaryOperator::Gt => ">",
+                    BinaryOperator::Ge => ">=",
+                    BinaryOperator::Concat => "++",
+                    BinaryOperator::Index => if rhs { "get[]" } else { "set[]" },
+                };
+
+                let left_ty = self.get_expressions_type(*left.clone(), true)?;
+                let right_ty = self.get_expressions_type(*right.clone(), true)?;
+
+                let overloads = self.get_overloads(operator);
+                if overloads.is_none() {
+                    return Err(TypeError::BinaryOperatorNotDefined(operator.to_string(), start, end));
+                }
+                let overloads = overloads.unwrap();
+
+                let mut left_type = None;
+                let mut right_type = None;
+                let mut overloaded_function = None;
+
+                for overload in overloads {
+                    let function = self.get_type(&overload);
+                    if function.is_none() {
+                        continue;
+                    }
+                    let function = function.unwrap();
+                    let function = function.borrow();
+
+                    let Type::Builtin(BuiltinType::Function { params, return_type }) = &*function else {
+                        continue;
+                    };
+
+                    if params.len() == 2 && params[0] == left_ty && params[1] == right_ty {
+                        left_type = Some(params[0].clone());
+                        right_type = Some(params[1].clone());
+                        overloaded_function = Some(overload.clone());
+                        if *return_type.as_ref() == *ty {
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(overloaded_function) = overloaded_function {
+                    let left_ty = left_type.expect("You forgot to set the left type");
+                    let right_ty = right_type.expect("You forgot to set the right type");
+                    let left = self.check_expressions_type(*left, &left_ty, true)?;
+                    let right = self.check_expressions_type(*right, &right_ty, true)?;
+                    let expression = ExpressionRaw::Call(Call::new(
+                        Box::new(ExpressionRaw::Variable(PathName { segments: overloaded_function, start: 0, end: 0 })),
+                        vec![],
+                        vec![
+                            CallArg::new(None, Either::Right(left), 0, 0),
+                            CallArg::new(None, Either::Right(right), 0, 0),
+                        ],
+                        start,
+                        end
+                    ));
+                    return Ok(Expression::new(expression, &ty));
+                }
+
+                return Err(TypeError::BinaryOperatorNotDefined(operator.to_string(), start, end));
             }
 
         }
@@ -1020,8 +1348,6 @@ impl <'a> TypeChecker<'a> {
 
 
         if else_type == *ty && then_type == *ty {
-            println!("then_type: {:?}, else_type: {:?}", then_type, else_type);
-            println!("ty: {:?}", ty);
             return Ok((IfExpr::new(condition, then_branch, else_branch, start, end), ty.clone()));
         }
         Err(TypeError::TypeMismatch(ty.clone(), then_type, start, end))
@@ -1055,7 +1381,7 @@ impl <'a> TypeChecker<'a> {
     ) -> Result<core_annotated::Statement, TypeError> {
         match statement {
             core_annotated::Statement::Expression(expr) => {
-                let Expression { ty: e_ty, raw } = self.check_expressions_type(expr.raw.clone(), ty)?;
+                let Expression { ty: e_ty, raw } = self.check_expressions_type(expr.raw.clone(), ty, true)?;
                 if *ty == *e_ty.borrow() {
                     let statement = core_annotated::Statement::Expression(Expression::new(raw.clone(), ty));
                     return Ok(statement);
@@ -1106,6 +1432,11 @@ impl <'a> TypeChecker<'a> {
             } => {
                 let visibility = Self::convert_visibility(&visibility);
                 let core_lang::PathName { segments, start: nstart, end: nend } = name;
+
+                if name.segments.len() > 1 {
+                    self.add_overload(segments.last().unwrap(), &segments);
+                }
+
                 let name = PathName::new(segments.clone(), *nstart, *nend);
                 let pairs = generic_params
                     .iter()
@@ -1174,6 +1505,11 @@ impl <'a> TypeChecker<'a> {
             } => {
                 let visibility = Self::convert_visibility(&visibility);
                 let core_lang::PathName { segments, start: nstart, end: nend } = name;
+
+                if name.segments.len() > 1 {
+                    self.add_overload(segments.last().unwrap(), &segments);
+                }
+
                 let name = PathName::new(segments.clone(), *nstart, *nend);
                 let pairs = generic_params
                     .iter()
@@ -1230,30 +1566,30 @@ impl <'a> TypeChecker<'a> {
     fn check_statement(&mut self, statement: &core_lang::Statement) -> Result<core_annotated::Statement, TypeError> {
         match statement {
             core_lang::Statement::Assignment { target, value, start, end } => {
-                let target = self.convert_expression_type(target)?;
-                let value = self.convert_expression_type(value)?;
+                let target = self.convert_expression_type(target, true)?;
+                let value = self.convert_expression_type(value, true)?;
 
-                let target_type = self.get_expressions_type(target.clone())?;
-                let value_type = self.get_expressions_type(value.clone())?;
+                let target_type = self.get_expressions_type(target.clone(), true)?;
+                let value_type = self.get_expressions_type(value.clone(), true)?;
 
-                let target = self.check_expressions_type(target, &value_type)?;
-                let value = self.check_expressions_type(value, &target_type)?;
+                let target = self.check_expressions_type(target, &value_type, false)?;
+                let value = self.check_expressions_type(value, &target_type, true)?;
 
                 Ok(core_annotated::Statement::new_assignment(target, value, *start, *end))
             }
             core_lang::Statement::Expression(expr) => {
-                let expr = self.convert_expression_type(&expr)?;
-                let expr_type = self.get_expressions_type(expr.clone())?;
+                let expr = self.convert_expression_type(&expr, true)?;
+                let expr_type = self.get_expressions_type(expr.clone(), true)?;
 
-                let expr = self.check_expressions_type(expr, &expr_type)?;
+                let expr = self.check_expressions_type(expr, &expr_type, true)?;
                 Ok(core_annotated::Statement::Expression(expr))
             }
             core_lang::Statement::Let { name, ty, value, start, end } => {
 
                 let ty = self.does_type_exist_type(&ty)?;
-                let value = self.convert_expression_type(&value)?;
+                let value = self.convert_expression_type(&value, true)?;
 
-                let value = self.check_expressions_type(value, &ty)?;
+                let value = self.check_expressions_type(value, &ty, true)?;
 
                 let pattern = self.convert_pattern(&name)?;
 
@@ -1278,7 +1614,7 @@ impl <'a> TypeChecker<'a> {
             }
             core_annotated::Statement::Expression(expr) => {
                 let Expression { raw, .. } = expr;
-                self.get_expressions_type(raw.clone())
+                self.get_expressions_type(raw.clone(), true)
             }
             core_annotated::Statement::Let { .. } => {
                 Ok(Type::Builtin(BuiltinType::Unit))

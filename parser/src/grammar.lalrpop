@@ -133,6 +133,7 @@ pub Function: TopLevelStatement<'a> = {
     <r:RegularFunction> => r,
     <e:ExternFunction> => e,
     <o:OperatorFunction> => o,
+    <o:OperatorExternFunction> => o,
 };
 
 pub RegularFunction: TopLevelStatement<'a> = {
@@ -326,6 +327,160 @@ pub ParamList: Vec<Param<'a>> = {
         Vec::new()
     }
 };
+
+OperatorExternFunction: TopLevelStatement<'a> = {
+    // Equals Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Equals ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("==");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Not Equals Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" NotEquals ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("!=");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Less Than Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path>  "(" AngleOpen ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("<");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Greater Than Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" AngleClose ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push(">");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Less Than Equals Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" LtE ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("<=");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Greater Than Equals Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" GtE ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push(">=");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Concat Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Concat ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("++");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Add Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Plus ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("+");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Subtract Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Minus ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("-");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Multiply Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Mult ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("*");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Divide Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Div ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("/");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Modulo Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Mod ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("%");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Get and set Operators
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" <id:Identifier> "[" "]" ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> =>? {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        match id {
+            "get" => name.segments.push("get[]"),
+            "set" => name.segments.push("set[]"),
+            "create" => name.segments.push("create[]"),
+            _ => return Err(ParseError::User {
+                error: SpannedLexerError::new(LexerError::InvalidOperator, start, end),
+            }),
+        }
+        name.end = name_end;
+        Ok(Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end))
+    },
+};
+
 
 pub Param: Param<'a> = {
     <start: @L> <name:Identifier> ":" <ty:ExpressionType> <end: @R> => Param::new(false, name, ty, start, end),

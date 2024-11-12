@@ -31,6 +31,30 @@ pub extern "Java" fn Natural::show(n: nat) -> String = "
     return n.toString();
 "
 
-pub extern "Java" fn Int::show(n: int) -> String = "
+pub extern "Java" fn Number::show(n: int) -> String = "
     return n.toString();
+"
+
+pub extern "Java" fn I8::(+)(x: i8, y: i8) -> i8 = "
+    return (byte)(x + y);
+"
+
+pub extern "Java" fn I16::(+)(x: i16, y: i16) -> i16  = "
+    return (short)(x + y);
+"
+
+pub extern "Java" fn I32::(+)(x: i32, y: i32) -> i32 = "
+    return x + y;
+"
+
+pub extern "Java" fn I64::(+)(x: i64, y: i64) -> i64 = "
+    return x + y;
+"
+
+pub extern "Java" fn Natural::(+)(x: nat, y: nat) -> nat = "
+    return (Nat)x.add(y);
+"
+
+pub extern "Java" fn Number::(+)(x: int, y: int) -> int = "
+    return (Int)(x.add(y));
 "
