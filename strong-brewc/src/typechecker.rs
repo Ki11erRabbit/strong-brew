@@ -172,6 +172,7 @@ impl TypeChecker {
         name: &str,
         file: &core_lang::File
     ) -> Result<core_annotated::File, TypeError> {
+        self.push_local_scope();
         let core_lang::PathName { segments, start, end } = &file.path;
         let path = PathName::new(segments.clone(), *start, *end);
 
@@ -217,7 +218,7 @@ impl TypeChecker {
 
 
         let file = core_annotated::File::new(path, decl);
-        
+        self.pop_local_scope();
         Ok(file)
     }
 
@@ -550,7 +551,9 @@ impl TypeChecker {
                 let tuple = tuple.into_iter().map(|x| {
                     match x {
                         ExpressionRaw::Type(ty) => Ok(ty),
-                        _ => Err(TypeError::NotAType),
+                        _ => {
+                            Err(TypeError::NotAType)
+                        },
                     }
                 }).collect::<Result<Vec<_>, _>>()?;
                 
@@ -1432,6 +1435,7 @@ impl TypeChecker {
             } => {
                 let visibility = Self::convert_visibility(&visibility);
                 let core_lang::PathName { segments, start: nstart, end: nend } = name;
+                self.push_local_scope();
 
                 if name.segments.len() > 1 {
                     self.add_overload(segments.last().unwrap(), &segments);
@@ -1455,7 +1459,6 @@ impl TypeChecker {
                     generic_params.push(param);
                     generic_args.push(ty);
                 }
-                self.push_local_scope();
 
                 let params = params.iter().map(|x| {
                     let core_lang::Param { implicit, name, ty, start, end } = x;
@@ -1505,6 +1508,7 @@ impl TypeChecker {
             } => {
                 let visibility = Self::convert_visibility(&visibility);
                 let core_lang::PathName { segments, start: nstart, end: nend } = name;
+                self.push_local_scope();
 
                 if name.segments.len() > 1 {
                     self.add_overload(segments.last().unwrap(), &segments);
@@ -1543,7 +1547,8 @@ impl TypeChecker {
                         return_type.clone(),
                     )
                 )));
-                
+
+                self.pop_local_scope();
                 Ok(core_annotated::Function::new_extern(
                     visibility,
                     language,

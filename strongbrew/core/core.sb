@@ -58,3 +58,209 @@ pub extern "Java" fn Natural::(+)(x: nat, y: nat) -> nat = "
 pub extern "Java" fn Number::(+)(x: int, y: int) -> int = "
     return (Int)(x.add(y));
 "
+
+pub extern "Java" fn I8::subtract::(-)(x: i8, y: i8) -> i8 = "
+    return (byte)(x - y);
+"
+
+pub extern "Java" fn I16::subtract::(-)(x: i16, y: i16) -> i16  = "
+    return (short)(x - y);
+"
+
+pub extern "Java" fn I32::subtract::(-)(x: i32, y: i32) -> i32 = "
+    return x - y;
+"
+
+pub extern "Java" fn I64::subtract::(-)(x: i64, y: i64) -> i64 = "
+    return x - y;
+"
+
+/*pub extern "Java" fn Natural::subtract::(-)(x: nat, y: nat) -> if y > x { int } else { nat } = "
+    return (Nat)x.add(y);
+"*/
+
+pub extern "Java" fn Number::subtract::(-)(x: int, y: int) -> int = "
+    return (Int)(x.subtract(y));
+"
+
+pub extern "Java" fn I8::negate::(-)(x: i8) -> i8 = "
+    return (byte)(-x);
+"
+
+pub extern "Java" fn I16::negate::(-)(x: i16) -> i16  = "
+    return (short)(-x);
+"
+
+pub extern "Java" fn I32::negate::(-)(x: i32) -> i32 = "
+    return -x;
+"
+
+pub extern "Java" fn I64::negate::(-)(x: i64) -> i64 = "
+    return -x;
+"
+
+pub extern "Java" fn Natural::negate::(-)(x: nat) -> int = "
+    return (Int)x.negate();
+"
+
+pub extern "Java" fn Number::negate::(-)(x: int) -> int = "
+    return (Int)x.negate();
+"
+
+pub extern "Java" fn I8::not::(!)(x: i8) -> i8 = "
+    return (byte)(~x);
+"
+
+pub extern "Java" fn I16::not::(!)(x: i16) -> i16  = "
+    return (short)(~x);
+"
+
+pub extern "Java" fn I32::not::(!)(x: i32) -> i32 = "
+    return ~x;
+"
+
+pub extern "Java" fn I64::not::(!)(x: i64) -> i64 = "
+    return ~x;
+"
+
+pub extern "Java" fn Natural::not::(!)(x: nat) -> nat = "
+    return (Nat)x.not();
+"
+
+pub extern "Java" fn Number::not::(!)(x: int) -> int = "
+    return (Int)x.not();
+"
+
+pub extern "Java" fn I8::(*)(x: i8, y: i8) -> i8 = "
+    return (byte)(x * y);
+"
+
+pub extern "Java" fn I16::(*)(x: i16, y: i16) -> i16  = "
+    return (short)(x * y);
+"
+
+pub extern "Java" fn I32::(*)(x: i32, y: i32) -> i32 = "
+    return x * y;
+"
+
+pub extern "Java" fn I64::(*)(x: i64, y: i64) -> i64 = "
+    return x * y;
+"
+
+pub extern "Java" fn Natural::(*)(x: nat, y: nat) -> nat = "
+    return (Nat)x.multiply(y);
+"
+
+pub extern "Java" fn Number::(*)(x: int, y: int) -> int = "
+    return (Int)(x.multiply(y));
+"
+
+pub extern "Java" fn I8::(/)(x: i8, y: i8) -> i8 = "
+    return (byte)(x / y);
+"
+
+pub extern "Java" fn I16::(/)(x: i16, y: i16) -> i16  = "
+    return (short)(x / y);
+"
+
+pub extern "Java" fn I32::(/)(x: i32, y: i32) -> i32 = "
+    return x / y;
+"
+
+pub extern "Java" fn I64::(/)(x: i64, y: i64) -> i64 = "
+    return x / y;
+"
+
+pub extern "Java" fn Natural::(/)(x: nat, y: nat) -> nat = "
+    return (Nat)x.divide(y);
+"
+
+pub extern "Java" fn Number::(/)(x: int, y: int) -> int = "
+    return (Int)(x.divide(y));
+"
+
+pub extern "Java" fn I8::(%)(x: i8, y: i8) -> i8 = "
+    return (byte)(x % y);
+"
+
+pub extern "Java" fn I16::(%)(x: i16, y: i16) -> i16  = "
+    return (short)(x % y);
+"
+
+pub extern "Java" fn I32::(%)(x: i32, y: i32) -> i32 = "
+    return x % y;
+"
+
+pub extern "Java" fn I64::(%)(x: i64, y: i64) -> i64 = "
+    return x % y;
+"
+
+pub extern "Java" fn Natural::(%)(x: nat, y: nat) -> nat = "
+    return (Nat)x.mod(y);
+"
+
+pub extern "Java" fn Number::(%)(x: int, y: int) -> int = "
+    return (Int)(x.mod(y));
+"
+
+pub extern "Java" fn str::(++)(x: String, y: String) -> String = "
+    return x + y;
+"
+
+/*pub extern "Java" fn array::(++)[T: type](x: Array[T, n], y: Array[T, m] ) -> Array[T, n + m] = "
+    T[] result = Arrays.copyOf(x, x.length + y.length);
+    System.arraycopy(y, 0, result, x.length, y.length);
+    return result;
+"*/
+
+pub extern "Java" fn str::I32::(get[])(x: String, y: i32) -> char = "
+    return x.charAt(y);
+"
+
+pub extern "Java" fn str::I64::(get[])(x: String, y: i64) -> char = "
+    return x.charAt((int)y);
+"
+
+pub extern "Java" fn str::Natural::(get[])(x: String, y: nat) -> char = "
+    return x.charAt(y.intValue());
+"
+
+pub extern "Java" fn str::Number::(get[])(x: String, y: int) -> char = "
+    return x.charAt(y.intValue());
+"
+
+pub extern "Java" fn array::I32::(get[])[T: type](x: Array[T, n], y: i32) -> T = "
+    return x[y];
+"
+
+pub extern "Java" fn array::I64::(get[])[T: type](x: Array[T, n], y: i64) -> T = "
+    return x[(int)y];
+"
+
+pub extern "Java" fn array::Natural::(get[])[T: type](x: Array[T, n], y: nat) -> T = "
+    return x[y.intValue()];
+"
+
+pub extern "Java" fn array::Number::(get[])[T: type](x: Array[T, n], y: int) -> T = "
+    return x[y.intValue()];
+"
+
+pub extern "Java" fn array::I32::(set[])[T: type](x: mut Array[T, n], y: i32, value: T) = "
+    x.get()[y] = value;
+"
+
+pub extern "Java" fn array::I64::(set[])[T: type](x: mut Array[T, n], y: i64, value: T) = "
+    x.get()[(int)y] = value;
+"
+
+pub extern "Java" fn Bool::not::(!)(x: bool) -> bool = "
+    return !x;
+"
+
+pub extern "Java" fn Bool::and::(&&)(x: bool, y: bool) -> bool = "
+    return x && y;
+"
+
+pub extern "Java" fn Bool::or::(||)(x: bool, y: bool) -> bool = "
+    return x || y;
+"

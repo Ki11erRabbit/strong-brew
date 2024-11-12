@@ -86,6 +86,12 @@ impl JavaCodegenerator {
                 ']' => {
                     output.push_str("_bracket_close");
                 }
+                '&' => {
+                    output.push_str("_and_");
+                }
+                '|' => {
+                    output.push_str("_or_");
+                }
                 _ => {
                     output.push(c);
                 }

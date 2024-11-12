@@ -163,6 +163,28 @@ pub ExternFunction: TopLevelStatement<'a> = {
 };
 
 OperatorFunction: TopLevelStatement<'a> = {
+    // And Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" And ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("&&");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Or Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Or ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("||");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
     // Equals Operator
     <start: @L> <vis:Visibility> "fn" <name:Path> "(" Equals ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
         let typaram = match typaram {
@@ -295,6 +317,17 @@ OperatorFunction: TopLevelStatement<'a> = {
         name.end = name_end;
         Function::new(vis, name, typaram, params, ret, body, start, end)
     },
+    // Not Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Not ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("!");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
     // Get and set Operators
     <start: @L> <vis:Visibility> "fn" <name:Path> "(" <id:Identifier> "[" "]" ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> =>? {
         let typaram = match typaram {
@@ -329,6 +362,28 @@ pub ParamList: Vec<Param<'a>> = {
 };
 
 OperatorExternFunction: TopLevelStatement<'a> = {
+    // And Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" And ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("&&");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Or Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Or ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("||");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
     // Equals Operator
     <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Equals ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
         let typaram = match typaram {
@@ -458,6 +513,17 @@ OperatorExternFunction: TopLevelStatement<'a> = {
         };
         let mut name = name;
         name.segments.push("%");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Not Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Not ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("!");
         name.end = name_end;
         Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
     },
