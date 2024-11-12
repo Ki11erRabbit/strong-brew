@@ -757,8 +757,8 @@ mod tests {
         let expected = vec![
             Token::IntLiteral("123"),
             Token::FloatLiteral("123.456"),
-            Token::CharLiteral("'a'"),
-            Token::StringLiteral("\"hello\""),
+            Token::CharLiteral("a"),
+            Token::StringLiteral("hello"),
         ];
         for token in expected {
             let result = lexer.next_token().unwrap();

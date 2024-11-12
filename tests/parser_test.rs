@@ -464,13 +464,13 @@ return result;"
                 generic_params: vec![
                     GenericParam {
                         name: "A",
-                        constraints: vec![],
+                        constraint: None,
                         start: 38,
                         end: 39,
                     },
                     GenericParam {
                         name: "B",
-                        constraints: vec![],
+                        constraint: None,
                         start: 41,
                         end: 42,
                     },
@@ -581,7 +581,7 @@ return result;"
                         end: 79,
                     },
                 }),
-                body: "\"\nList<B> result = new ArrayList<>();\nfor (A a : l) {\n    result.add(f(a));\n}\nreturn result;\"",
+                body: "\nList<B> result = new ArrayList<>();\nfor (A a : l) {\n    result.add(f(a));\n}\nreturn result;",
                 start: 13,
                 end: 175,
             },
@@ -899,7 +899,7 @@ pub fn (create[])[A](items: ...A) -> ArrayList[A] = {
                 generic_params: vec![
                     GenericParam {
                         name: "A",
-                        constraints: vec![],
+                        constraint: None,
                         start: 36,
                         end: 37,
                     },
@@ -1338,7 +1338,7 @@ pub struct Arraylist[A] {
                 generic_params: vec![
                     GenericParam {
                         name: "A",
-                        constraints: vec![],
+                        constraint: None,
                         start: 39,
                         end: 40,
                     },
@@ -1426,7 +1426,7 @@ pub enum Linkedlist[A] {
                 generic_params: vec![
                     GenericParam {
                         name: "A",
-                        constraints: vec![],
+                        constraint: None,
                         start: 39,
                         end: 40,
                     },

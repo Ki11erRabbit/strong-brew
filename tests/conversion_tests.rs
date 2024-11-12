@@ -298,7 +298,7 @@ fn main() = {
 fn test_struct_becomes_enum() {
     let name = "test_struct_becomes_enum.sb";
     let input = r#"module test_struct_becomes_enum
-pub struct Arraylist[T] {
+pub struct Arraylist[T: type] {
     data: Array[T],
     pub length: nat,
 }
@@ -323,9 +323,18 @@ pub struct Arraylist[T] {
                 generic_params: vec![
                     GenericParam {
                         name: "T",
-                        constraints: vec![],
+                        constraint: Some(
+                            ExpressionType {
+                                expression: Expression::Type(
+                                    Type::Builtin(
+                                        BuiltinType::Type,
+                                    ),
+                                ),
+                                variadic: false,
+                            },
+                        ),
                         start: 53,
-                        end: 54,
+                        end: 60,
                     },
                 ],
                 variants: vec![
@@ -343,8 +352,8 @@ pub struct Arraylist[T] {
                                                     segments: vec![
                                                         "Array",
                                                     ],
-                                                    start: 68,
-                                                    end: 73,
+                                                    start: 74,
+                                                    end: 79,
                                                 },
                                             )),
                                             vec![
@@ -353,8 +362,8 @@ pub struct Arraylist[T] {
                                                         segments: vec![
                                                             "T",
                                                         ],
-                                                        start: 74,
-                                                        end: 75,
+                                                        start: 80,
+                                                        end: 81,
                                                     },
                                                 ),
                                             ],
@@ -362,8 +371,8 @@ pub struct Arraylist[T] {
                                     ),
                                     variadic: false,
                                 },
-                                start: 62,
-                                end: 76,
+                                start: 68,
+                                end: 82,
                             },
                             Field {
                                 visibility: Visibility::Public,
@@ -376,16 +385,16 @@ pub struct Arraylist[T] {
                                     ),
                                     variadic: false,
                                 },
-                                start: 82,
-                                end: 97,
+                                start: 88,
+                                end: 103,
                             },
                         ],
                         start: 32,
-                        end: 100,
+                        end: 106,
                     },
                 ],
                 start: 32,
-                end: 100,
+                end: 106,
             },
         ),
     ],
