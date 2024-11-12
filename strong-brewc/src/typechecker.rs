@@ -730,7 +730,23 @@ impl TypeChecker {
                 Ok(ExpressionRaw::Return(expr))
             }
             core_lang::Expression::Closure(closure) => {
-                todo!("convert closures")
+                let core_lang::Closure { params, return_type, body, start, end } = closure;
+                self.push_local_scope();
+                let params = params.iter().map(|x| {
+                    let core_lang::Param { implicit, name, ty, start, end,  } = x;
+                    let ty = self.does_type_exist_type(ty)?;
+                    self.add_local_type(&vec![name], Rc::new(RefCell::new(ty.clone())));
+                    Ok(Param::new(*implicit, name, ty, *start, *end))
+                }).collect::<Result<Vec<_>, _>>()?;
+                let return_type = return_type.as_ref().map(|x| self.does_type_exist_type(x)).transpose()?;
+                let current_return_type = return_type.clone().unwrap_or_else(|| {
+                    Type::Builtin(BuiltinType::Unit)
+                });
+                self.set_return_type(current_return_type);
+                let return_type = return_type.map(Box::new);
+                let body = self.check_statements(body)?;
+                self.pop_local_scope();
+                Ok(core_annotated::Closure::new(params, return_type, body, *start, *end))
             }
             core_lang::Expression::Parenthesized(expr) => {
                 let expr = self.convert_expression(expr, rhs)?;
@@ -894,11 +910,19 @@ impl TypeChecker {
                 let return_type = return_type.clone();
                 Ok(*return_type.clone())
             }
-            ExpressionRaw::Return(expr) => {
-                todo!("implement way to knoww what the return type is")
+            ExpressionRaw::Return(_) => {
+                Ok(Type::Builtin(BuiltinType::Unit))
             }
             ExpressionRaw::Closure(closure) => {
-                todo!("implement typechecking for closures")
+                let core_annotated::Closure { params, return_type, .. } = closure;
+                let params = params.iter().map(|x| {
+                    let core_annotated::Param { ty, .. } = x;
+                    let ty = ty.clone();
+                    Ok(ty)
+                }).collect::<Result<Vec<_>, _>>()?;
+                let return_type = return_type.as_ref().map(|x| x.clone());
+                let return_type = return_type.unwrap_or_else(|| Box::new(Type::Builtin(BuiltinType::Unit)));
+                Ok(Type::Builtin(BuiltinType::Function { params, return_type }))
             }
             ExpressionRaw::Parenthesized(Either::Left(expr)) => {
                 let ty = self.get_expressions_type(*expr, rhs)?;
@@ -1176,10 +1200,29 @@ impl TypeChecker {
                             cend)), &return_type))
             }
             ExpressionRaw::Return(expr) => {
-                todo!("implement way to knoww what the return type is")
+                let Some(Either::Left(raw)) = expr else {
+                    unreachable!("Return must have an expression")
+                };
+                let Some(return_type) = self.get_return_type() else {
+                    unreachable!("Return must be in a function");
+                };
+                let expr = self.check_expressions_type(*raw, &return_type, rhs)?;
+
+                Ok(Expression::new(ExpressionRaw::Return(Some(Either::Right(Box::new(expr)))), ty))
             }
             ExpressionRaw::Closure(closure) => {
-                todo!("implement typechecking for closures")
+                let core_annotated::Closure { params, return_type, body, start, end } = closure;
+                let params = params.iter().map(|x| {
+                    let core_annotated::Param { implicit, name, ty, start, end } = x;
+                    let ty = ty.clone();
+                    Ok(Param::new(*implicit, name, ty, *start, *end))
+                }).collect::<Result<Vec<_>, _>>()?;
+                let return_type = return_type.as_ref().map(|x| x.clone());
+                let return_type = return_type.unwrap_or_else(|| Box::new(Type::Builtin(BuiltinType::Unit)));
+                let return_type = Some(return_type);
+                Ok(Expression::new(core_annotated::Closure::new(params.clone(), return_type.clone(), body, start, end), &Type::Builtin(BuiltinType::Function { params: params.iter().map(|x| x.ty.clone()).collect(), return_type: return_type.unwrap() })))
+                
+                
             }
             ExpressionRaw::Parenthesized(Either::Left(expr)) => {
                 let expr = self.check_expressions_type(*expr, ty, rhs)?;

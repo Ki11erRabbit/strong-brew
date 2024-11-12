@@ -30,7 +30,19 @@ def generate_callable_def(letters):
     lst.append(f"}}")
     return f"Callable{len(letters) - 1}", lst
 
+def generate_callable0_def():
+    lst = []
+    lst.append(f"package strongbrew.callables;")
+    lst.append(f"@FunctionalInterface")
+    lst.append(f"public interface Callable0 <A> {{")
+    lst.append(f"    public A call();")
+    lst.append(f"}}")
+    return f"Callable0", lst
 size = 2
+
+name, body = generate_callable0_def()
+with open("strongbrew/callables/" + name + ".java", "w") as f:
+    f.write('\n'.join(body))
 
 while size <= len(letters):
     name, body = generate_tuple_def(letters[:size])

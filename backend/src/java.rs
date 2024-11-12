@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use sb_ast::core_annotated::{BuiltinType, CallArg, Enum, Expression, ExpressionRaw, File, Function, GenericParam, IfExpr, Import, Literal, Param, PathName, Pattern, Statement, TopLevelStatement, Type, Variant, Visibility};
+use sb_ast::core_annotated::{BuiltinType, CallArg, Closure, Enum, Expression, ExpressionRaw, File, Function, GenericParam, IfExpr, Import, Literal, Param, PathName, Pattern, Statement, TopLevelStatement, Type, Variant, Visibility};
 
 use either::Either;
 use crate::Codegenerator;
@@ -46,6 +46,13 @@ impl JavaCodegenerator {
     /// This is done by replacing all invalid characters with valid ones.
     /// This does lead to more verbose names, but it is good enough for a compiler into Java.
     fn convert_identifier<S>(name: S) -> String where S: AsRef<str> {
+
+        match name.as_ref() {
+            "while" => return String::from("whilefn"),
+            "for" => return String::from("forfn"),
+            _ => {}
+        }
+        
         let mut output = String::new();
         let chars = name.as_ref().chars();
         for c in chars {
@@ -984,6 +991,57 @@ impl JavaCodegenerator {
             }
             ExpressionRaw::IfExpression(if_) => {
                 output.push_str(&self.compile_if_expr(if_, rhs, variable));
+            }
+            ExpressionRaw::Closure(closure) => {
+                let Closure { params, return_type, body, start, end } = closure;
+                output.push_str("new ");
+                let param_count = params.len();
+                output.push_str(&format!("Callable{}<", param_count));
+                for param in params.iter() {
+                    let ty = self.compile_type(&param.ty);
+                    let ty = Self::change_type_for_generic(&ty);
+                    output.push_str(&ty);
+                    output.push_str(",");
+                }
+                let Some(return_type) = return_type else {
+                    unreachable!("Return type of closure should be known at this time")
+                };
+                let ty = self.compile_type(return_type.as_ref());
+                let ty = Self::change_type_for_generic(&ty);
+                output.push_str(ty);
+
+                output.push_str(">() {\n@Override\npublic ");
+                output.push_str(&format!("{} call(", ty));
+                for (i, param) in params.into_iter().enumerate() {
+                    let ty = self.compile_type(&param.ty);
+                    let ty = Self::change_type_for_generic(&ty);
+                    output.push_str(ty);
+                    output.push_str(&format!(" {}", param.name));
+                    if i < params.len() - 1 {
+                        output.push_str(", ");
+                    }
+                }
+                output.push_str(") {\n");
+                output.push_str(&self.compile_statements(body, false, InLetBinding::NA));
+                // When we are "Void" we must handle the the fact that in Java it is an object
+                if ty == "Void" {
+                    output.push_str("return null;\n");
+                }
+
+                output.push_str("}\n}\n");
+                
+            }
+            ExpressionRaw::Return(body) => {
+                match body {
+                    Some(Either::Right(body)) => {
+                        let body = self.compile_expression(body.as_ref(), true, InLetBinding::NA);
+                        output.push_str("return ");
+                        output.push_str(&body);
+                    }
+                    None => todo!("Implement empty returns"),
+                    _ => unreachable!("Return body should have been converted")
+                }
+
             }
             _ => todo!("Implement other expressions"),
         }
