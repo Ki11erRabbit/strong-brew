@@ -396,10 +396,9 @@ impl TypeChecker {
             Type::Builtin(BuiltinType::Type)
         });
 
-        let pattern = self.convert_pattern(name)?;
-        let bound_names = pattern.get_bound_names();
+        let bound_names = vec![name.to_string()];
         
-        let param = core_annotated::GenericParam::new(pattern, Some(ty.clone()), *start, *end);
+        let param = core_annotated::GenericParam::new(name, Some(ty.clone()), *start, *end);
         
         Ok((param, (bound_names, ty)))
     }

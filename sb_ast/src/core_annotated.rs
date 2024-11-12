@@ -241,15 +241,15 @@ impl Import {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct GenericParam {
-    pub name: Pattern,
+    pub name: String,
     pub constraint: Option<Type>,
     pub start: usize,
     pub end: usize,
 }
 
 impl GenericParam {
-    pub fn new(name: Pattern, constraint: Option<Type>, start: usize, end: usize) -> GenericParam {
-        GenericParam { name, constraint, start, end }
+    pub fn new(name: &str, constraint: Option<Type>, start: usize, end: usize) -> GenericParam {
+        GenericParam { name: name.to_string(), constraint, start, end }
     }
 }
 

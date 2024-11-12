@@ -238,14 +238,14 @@ impl Import<'_> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct GenericParam<'a> {
-    pub name: Pattern<'a>,
+    pub name: &'a str,
     pub constraint: Option<ExpressionType<'a>>,
     pub start: usize,
     pub end: usize,
 }
 
 impl GenericParam<'_> {
-    pub fn new<'a>(name: Pattern<'a>, constraint: Option<ExpressionType<'a>>, start: usize, end: usize) -> GenericParam<'a> {
+    pub fn new<'a>(name: &'a str, constraint: Option<ExpressionType<'a>>, start: usize, end: usize) -> GenericParam<'a> {
         GenericParam { name, constraint, start, end }
     }
 }
@@ -611,7 +611,7 @@ fn convert_visibility(visibility: inner::Visibility) -> Visibility {
 fn convert_generic_params<'a>(params: Vec<inner::GenericParam<'a>>) -> Vec<GenericParam<'a>> {
     params.into_iter().map(|param| {
         let inner::GenericParam { name, constraint, start, end } = param;
-        let name = convert_pattern(name);
+        let name = name;
         let constraint = constraint.map(convert_expression_type);
         GenericParam::new(name, constraint, start, end)
     }).collect()

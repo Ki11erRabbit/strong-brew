@@ -239,14 +239,14 @@ impl Import<'_> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct GenericParam<'a> {
-    pub name: Pattern<'a>,
+    pub name: &'a str,
     pub constraint: Option<ExpressionType<'a>>,
     pub start: usize,
     pub end: usize,
 }
 
 impl GenericParam<'_> {
-    pub fn new<'a>(name: Pattern<'a>, constraint: Option<ExpressionType<'a>>, start: usize, end: usize) -> GenericParam<'a> {
+    pub fn new<'a>(name: &'a str, constraint: Option<ExpressionType<'a>>, start: usize, end: usize) -> GenericParam<'a> {
         GenericParam { name, constraint, start, end }
     }
 }

@@ -166,7 +166,7 @@ fn convert_generic_params(generic_params: Vec<outer::GenericParam>) -> Vec<inner
     let mut inner_generic_params = Vec::new();
     for generic_param in generic_params {
         let outer::GenericParam { name, constraint, start, end } = generic_param;
-        let inner_name = convert_pattern(name).unwrap();
+        let inner_name = name;
         let inner_constraints = constraint.map(|constraint| convert_expression_type(constraint).unwrap());
         inner_generic_params.push(inner::GenericParam::new(inner_name, inner_constraints, start, end));
         

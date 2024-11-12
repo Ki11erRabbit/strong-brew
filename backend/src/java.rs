@@ -485,11 +485,7 @@ impl JavaCodegenerator {
         for param in generic_params {
             let GenericParam { name, .. } = param;
 
-            let bound_names = name.get_bound_names();
-
-            for bound_name in bound_names {
-                params.push(bound_name);
-            }
+            params.push(name.as_str());
         }
         output.push_str(params.join(", ").as_str());
         output
