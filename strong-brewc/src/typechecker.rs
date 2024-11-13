@@ -744,6 +744,7 @@ impl TypeChecker {
                 self.set_return_type(current_return_type);
                 let return_type = return_type.map(Box::new);
                 let body = self.check_statements(body)?;
+                panic!("Add function to convert statements");
                 self.pop_local_scope();
                 Ok(core_annotated::Closure::new(params, return_type, body, *start, *end))
             }
@@ -1634,10 +1635,6 @@ impl TypeChecker {
             core_lang::Statement::Let { name, ty, value, start, end } => {
 
                 let ty = self.does_type_exist_type(&ty)?;
-                let value = self.convert_expression_type(&value, true)?;
-
-                let value = self.check_expressions_type(value, &ty, true)?;
-
                 let pattern = self.convert_pattern(&name)?;
 
                 // TODO: destructure expression and check that the types match
@@ -1646,6 +1643,10 @@ impl TypeChecker {
                 for name in bound_names {
                     self.add_local_type(&vec![name], Rc::new(RefCell::new(ty.clone())));
                 }
+                let value = self.convert_expression_type(&value, true)?;
+
+                let value = self.check_expressions_type(value, &ty, true)?;
+
 
                 Ok(core_annotated::Statement::new_let(pattern, ty, value, *start, *end))
             }
