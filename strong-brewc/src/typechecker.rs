@@ -1726,22 +1726,46 @@ impl TypeChecker {
                 let ty = self.does_type_exist_type(&ty)?;
                 let pattern = self.convert_pattern(&name)?;
 
-                // TODO: destructure expression and check that the types match
-                let bound_names = pattern.get_bound_names();
-
-                for name in bound_names {
-                    self.add_local_type(&vec![name], Rc::new(RefCell::new(ty.clone())));
-                }
+                let pattern = self.check_pattern_types(pattern, ty.clone())?;
+                
                 let value = self.convert_expression_type(&value, true)?;
 
                 let value = self.check_expressions_type(value, &ty, true)?;
 
-
                 Ok(core_annotated::Statement::new_let(pattern, ty, value, *start, *end))
             }
-
         }
+    }
 
+    fn check_pattern_types(&mut self, pattern: core_annotated::Pattern, ty: Type) -> Result<core_annotated::Pattern, TypeError> {
+        match pattern {
+            core_annotated::Pattern::Variable(name) => {
+                self.add_local_type(&vec![&name], Rc::new(RefCell::new(ty.clone())));
+                Ok(core_annotated::Pattern::Variable(name))
+            }
+            core_annotated::Pattern::Tuple(members) => {
+                let mut output = Vec::new();
+
+                let Type::Tuple(tuple_types) = ty else {
+                    todo!("Report type not being a tuple")
+                };
+
+                for (member, ty) in members.into_iter().zip(tuple_types.into_iter()) {
+                    output.push(self.check_pattern_types(member, ty)?);
+                }
+
+                Ok(core_annotated::Pattern::Tuple(output))
+            }
+            core_annotated::Pattern::Wildcard => {
+                Ok(core_annotated::Pattern::Wildcard)
+            }
+            core_annotated::Pattern::Constructor { name, fields } => {
+                todo!("Lookup constructor via name and match on fields")
+            }
+            _ => {
+                todo!("error on pattern match due to literal")
+            }
+        }
     }
 
     fn get_statements_type(&mut self, statement: &core_annotated::Statement) -> Result<Type, TypeError> {
