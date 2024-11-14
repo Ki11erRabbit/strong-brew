@@ -3,6 +3,7 @@ use petgraph::graph::UnGraph;
 use sb_ast::core_annotated::{self, BinaryOperator, BuiltinType, Call, CallArg, Enum, Expression, ExpressionRaw, Field, Function, IfExpr, Import, Literal, Param, PathName, TopLevelStatement, Type, UnaryOperator};
 use sb_ast::core_lang;
 use std::collections::{HashMap, HashSet};
+use std::process::Output;
 use std::rc::Rc;
 use std::cell::RefCell;
 use either::Either;
@@ -137,7 +138,7 @@ impl TypeChecker {
     pub fn get_type<S>(&self, name: &Vec<S>) -> Option<Rc<RefCell<Type>>>
     where S: AsRef<str> {
         let name: Vec<String> = name.into_iter().map(|x| x.as_ref().to_string()).collect();
-        if let Some(scope) = self.local_types.last() {
+        for scope in self.local_types.iter().rev() {
             if let Some(ty) = scope.get(&name) {
                 return Some(ty.clone());
             }
@@ -741,11 +742,12 @@ impl TypeChecker {
                 let current_return_type = return_type.clone().unwrap_or_else(|| {
                     Type::Builtin(BuiltinType::Unit)
                 });
+                let outer_return_type = self.get_return_type();
                 self.set_return_type(current_return_type);
                 let return_type = return_type.map(Box::new);
                 let body = self.check_statements(body)?;
-                panic!("Add function to convert statements");
                 self.pop_local_scope();
+                self.set_return_type(outer_return_type.unwrap());
                 Ok(core_annotated::Closure::new(params, return_type, body, *start, *end))
             }
             core_lang::Expression::Parenthesized(expr) => {
@@ -1608,10 +1610,21 @@ impl TypeChecker {
     }
 
     fn check_statements(&mut self, statements: &Vec<core_lang::Statement>) -> Result<Vec<core_annotated::Statement>, TypeError> {
-        statements.into_iter().map(|x| self.check_statement(x)).collect()
+        let mut output = Vec::new();
+
+        for (i, statement) in statements.iter().enumerate() {
+            if i == statements.len() - 1 {
+                output.push(self.check_statement(statement, true)?);
+
+                return Ok(output);
+            }
+            output.push(self.check_statement(statement, false)?);
+        }
+
+        Ok(output)
     }
 
-    fn check_statement(&mut self, statement: &core_lang::Statement) -> Result<core_annotated::Statement, TypeError> {
+    fn check_statement(&mut self, statement: &core_lang::Statement, tail: bool) -> Result<core_annotated::Statement, TypeError> {
         match statement {
             core_lang::Statement::Assignment { target, value, start, end } => {
                 let target = self.convert_expression_type(target, true)?;
@@ -1630,6 +1643,29 @@ impl TypeChecker {
                 let expr_type = self.get_expressions_type(expr.clone(), true)?;
 
                 let expr = self.check_expressions_type(expr, &expr_type, true)?;
+
+                if tail {
+                    let Expression { raw, ty } = expr;
+
+                    match &raw {
+                        ExpressionRaw::Return(_) => {
+                            return Ok(core_annotated::Statement::Expression(Expression { raw, ty }));
+                        }
+                        _ => {} 
+                    }
+
+                    let current_return_type = self.get_return_type().unwrap();
+
+                    if current_return_type == *ty.borrow() && current_return_type != Type::Builtin(BuiltinType::Unit) {
+                        let raw = ExpressionRaw::Return(Some(Either::Right(Box::new(Expression { raw, ty }))));
+                        return Ok(core_annotated::Statement::Expression(Expression::new(raw, &Type::Builtin(BuiltinType::Unit))));
+                    } else if current_return_type == Type::Builtin(BuiltinType::Unit) {
+                        return Ok(core_annotated::Statement::Expression(Expression { raw, ty }));
+                    } else {
+                        return Err(TypeError::TypeMismatch(current_return_type, ty.borrow().clone(), 0, 0));
+                    }
+                }
+                
                 Ok(core_annotated::Statement::Expression(expr))
             }
             core_lang::Statement::Let { name, ty, value, start, end } => {
