@@ -72,6 +72,7 @@ pub struct TypeChecker {
     local_types: Vec<HashMap<Vec<String>, Rc<RefCell<Type>>>>,
     seen_files: HashSet<String>,
     current_return_type: Option<Type>,
+    current_param_type: Option<Type>,
 }
 
 impl TypeChecker {
@@ -82,6 +83,7 @@ impl TypeChecker {
             local_types: Vec::new(),
             seen_files: HashSet::new(),
             current_return_type: None,
+            current_param_type: None,
         }
     }
     pub fn add_overload<S, R>(&mut self, name: S, overload: &Vec<R>)
@@ -133,6 +135,18 @@ impl TypeChecker {
 
     pub fn unset_return_type(&mut self) {
         self.current_return_type = None;
+    }
+
+    pub fn get_param_type(&self) -> Option<Type> {
+        self.current_param_type.clone()
+    }
+
+    pub fn set_param_type(&mut self, ty: Type) {
+        self.current_param_type = Some(ty);
+    }
+
+    pub fn unset_param_type(&mut self) {
+        self.current_param_type = None;
     }
 
     pub fn get_type<S>(&self, name: &Vec<S>) -> Option<Rc<RefCell<Type>>>
@@ -739,6 +753,7 @@ impl TypeChecker {
                     Ok(Param::new(*implicit, name, ty, *start, *end))
                 }).collect::<Result<Vec<_>, _>>()?;
                 let return_type = return_type.as_ref().map(|x| self.does_type_exist_type(x)).transpose()?;
+                let is_return_type_none = return_type.is_none();
                 let current_return_type = return_type.clone().unwrap_or_else(|| {
                     Type::Builtin(BuiltinType::Unit)
                 });
@@ -748,6 +763,11 @@ impl TypeChecker {
                 let body = self.check_statements(body)?;
                 self.pop_local_scope();
                 self.set_return_type(outer_return_type.unwrap());
+                let return_type = if is_return_type_none {
+                    None
+                } else {
+                    return_type
+                };
                 Ok(core_annotated::Closure::new(params, return_type, body, *start, *end))
             }
             core_lang::Expression::Parenthesized(expr) => {
@@ -900,14 +920,14 @@ impl TypeChecker {
                     todo!("report wrong number of arguments")
                 }
 
-                let args = args.into_iter().enumerate().map(|(i, x)| {
+                /*let args = args.into_iter().enumerate().map(|(i, x)| {
                     let core_annotated::CallArg { name, value, start, end } = x;
                     let Either::Left(value) = value else {
                         unreachable!("CallArg value must not be annotated at this time")
                     };
                     let value = self.check_expressions_type(value, &params[i], rhs)?;
                     Ok(CallArg::new(name, Either::Right(value), start, end))
-                }).collect::<Result<Vec<_>, _>>()?;
+                }).collect::<Result<Vec<_>, _>>()?;*/
 
                 let return_type = return_type.clone();
                 Ok(*return_type.clone())
@@ -1147,7 +1167,14 @@ impl TypeChecker {
                                 let Either::Left(value) = value else {
                                     unreachable!("CallArg value must not be annotated at this time")
                                 };
+                                let backup = self.get_param_type();
+                                self.set_param_type(params[i].clone());
                                 let value = self.check_expressions_type(value, &params[i], rhs)?;
+                                if let Some(backup) = backup {
+                                    self.set_param_type(backup);
+                                } else {
+                                    self.unset_param_type();
+                                }
                                 Ok(CallArg::new(name, Either::Right(value), start, end))
                             }).collect::<Result<Vec<_>, TypeError>>();
 
@@ -1187,7 +1214,14 @@ impl TypeChecker {
                     let Either::Left(value) = value else {
                         unreachable!("CallArg value must not be annotated at this time")
                     };
+                    let backup = self.get_param_type();
+                    self.set_param_type(params[i].clone());
                     let value = self.check_expressions_type(value, &params[i], rhs)?;
+                    if let Some(backup) = backup {
+                        self.set_param_type(backup);
+                    } else {
+                        self.unset_param_type();
+                    }
                     Ok(CallArg::new(name, Either::Right(value), start, end))
                 }).collect::<Result<Vec<_>, _>>()?;
 
@@ -1213,14 +1247,32 @@ impl TypeChecker {
                 Ok(Expression::new(ExpressionRaw::Return(Some(Either::Right(Box::new(expr)))), ty))
             }
             ExpressionRaw::Closure(closure) => {
+                let current_param_type = self.get_param_type();
+
+                let current_param_type = current_param_type.unwrap_or_else(|| {
+                    Type::Builtin(BuiltinType::Unit)
+                });
+                
                 let core_annotated::Closure { params, return_type, body, start, end } = closure;
                 let params = params.iter().map(|x| {
                     let core_annotated::Param { implicit, name, ty, start, end } = x;
                     let ty = ty.clone();
                     Ok(Param::new(*implicit, name, ty, *start, *end))
                 }).collect::<Result<Vec<_>, _>>()?;
-                let return_type = return_type.as_ref().map(|x| x.clone());
-                let return_type = return_type.unwrap_or_else(|| Box::new(Type::Builtin(BuiltinType::Unit)));
+
+                let return_type = if return_type.is_none() {
+                    let Type::Builtin(BuiltinType::Function { params: _, return_type }) = &current_param_type else {
+                        todo!("report not a function error")
+                    };
+                    return_type.clone()
+                } else {
+                    return_type.as_ref().map(|x| x.clone()).unwrap()
+                };
+                let outer_return_type = self.get_return_type();
+                self.set_return_type(*return_type.clone());
+                let body = self.statements_add_tail_return(body)?;
+                self.set_return_type(outer_return_type.unwrap());
+                
                 let return_type = Some(return_type);
                 Ok(Expression::new(core_annotated::Closure::new(params.clone(), return_type.clone(), body, start, end), &Type::Builtin(BuiltinType::Function { params: params.iter().map(|x| x.ty.clone()).collect(), return_type: return_type.unwrap() })))
                 
@@ -1706,5 +1758,53 @@ impl TypeChecker {
 
         }
 
+    }
+
+    fn statements_add_tail_return(&mut self, statements: Vec<core_annotated::Statement>) -> Result<Vec<core_annotated::Statement>, TypeError> {
+        let mut output = Vec::new();
+
+        let statements_len = statements.len();
+
+        for (i, statement) in statements.into_iter().enumerate() {
+            if i == statements_len - 1 {
+                output.push(self.statement_add_tail_return(statement, true)?);
+
+                return Ok(output);
+            }
+            output.push(self.statement_add_tail_return(statement, false)?);
+        }
+
+        Ok(output)
+    }
+
+    fn statement_add_tail_return(&mut self, statement: core_annotated::Statement, tail: bool) -> Result<core_annotated::Statement, TypeError> {
+        match statement {
+            core_annotated::Statement::Expression(expr) => {
+                if tail {
+                    let Expression { raw, ty } = expr;
+
+                    match &raw {
+                        ExpressionRaw::Return(_) => {
+                            return Ok(core_annotated::Statement::Expression(Expression { raw, ty }));
+                        }
+                        _ => {} 
+                    }
+
+                    let current_return_type = self.get_return_type().unwrap();
+
+                    if current_return_type == *ty.borrow() && current_return_type != Type::Builtin(BuiltinType::Unit) {
+                        let raw = ExpressionRaw::Return(Some(Either::Right(Box::new(Expression { raw, ty }))));
+                        return Ok(core_annotated::Statement::Expression(Expression::new(raw, &Type::Builtin(BuiltinType::Unit))));
+                    } else if current_return_type == Type::Builtin(BuiltinType::Unit) {
+                        return Ok(core_annotated::Statement::Expression(Expression { raw, ty }));
+                    } else {
+                        return Err(TypeError::TypeMismatch(current_return_type, ty.borrow().clone(), 0, 0));
+                    }
+                }
+                
+                Ok(core_annotated::Statement::Expression(expr))
+            }
+            x => Ok(x)
+        }
     }
 }
