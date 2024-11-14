@@ -13,6 +13,11 @@ public abstract class SbNumber {
     public abstract SbNumber abs();
     public abstract SbNumber negate();
     public abstract SbNumber not();
+    public abstract SbNumber increment();
+    public abstract SbNumber decrement();
+    public int compareTo(SbNumber other) {
+        return this.value.compareTo(other.value);
+    }
     public float floatValue() {
         return value.floatValue();
     }

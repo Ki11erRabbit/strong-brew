@@ -26,7 +26,7 @@ def generate_callable_def(letters):
     lst.append(f"package strongbrew.callables;")
     lst.append(f"@FunctionalInterface")
     lst.append(f"public interface Callable{len(letters) - 1} <{', '.join([f'{c}' for c in letters])}> {{")
-    lst.append(f"    public {letters[-1]} call();")
+    lst.append(f"    public {letters[-1]} call({', '.join([f'{c} {c.lower()}' for c in letters])});")
     lst.append(f"}}")
     return f"Callable{len(letters) - 1}", lst
 

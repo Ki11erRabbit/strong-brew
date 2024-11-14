@@ -85,6 +85,18 @@ public class Nat extends SbNumber {
         return new Nat(value.remainder(num.value));
     }
     @Override
+    public SbNumber increment() {
+        return this.add(new Nat(1));
+    }
+    @Override
+    public SbNumber decrement() {
+        if (this.value.compareTo(BigInteger.valueOf(0)) == 0) {
+            return new Int(-1);
+        } else {
+            return this.subtract(new Nat(1));
+        }
+    }
+    @Override
     public SbNumber pow(int num) {
         return new Nat(value.pow(num));
     }

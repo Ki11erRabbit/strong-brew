@@ -44,6 +44,14 @@ public class Int extends SbNumber {
         return new Int(value.remainder(num.value));
     }
     @Override
+    public SbNumber increment() {
+        return this.add(new Int(1));
+    }
+    @Override
+    public SbNumber decrement() {
+        return this.subtract(new Int(1));
+    }
+    @Override
     public SbNumber pow(int num) {
         return new Int(value.pow(num));
     }

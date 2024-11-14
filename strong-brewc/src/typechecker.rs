@@ -883,7 +883,7 @@ impl TypeChecker {
                     unreachable!("Call name must be a variable")
                 };
 
-                let mut function_rc = self.get_type(&name.segments).unwrap();
+                let mut function_rc = self.get_type(&name.segments);
 
                 if name.segments.len() == 1 {
                     let name = name.segments[0].clone();
@@ -904,10 +904,11 @@ impl TypeChecker {
                                 continue;
                             }
 
-                            function_rc = function_rc_inner.clone();
+                            function_rc = Some(function_rc_inner.clone());
                         }
                     }
                 }
+                let function_rc = function_rc.unwrap();
                 let function = function_rc.clone();
                 let function = function.borrow();
                 
