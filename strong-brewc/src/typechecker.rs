@@ -1,9 +1,8 @@
 use petgraph::algo;
 use petgraph::graph::UnGraph;
-use sb_ast::core_annotated::{self, BinaryOperator, BuiltinType, Call, CallArg, Enum, Expression, ExpressionRaw, Field, Function, IfExpr, Import, Literal, Param, PathName, TopLevelStatement, Type, UnaryOperator};
+use sb_ast::core_annotated::{self, BinaryOperator, BuiltinType, Call, CallArg, Enum, Expression, ExpressionRaw, Field, IfExpr, Import, Literal, Param, PathName, TopLevelStatement, Type, UnaryOperator};
 use sb_ast::core_lang;
 use std::collections::{HashMap, HashSet};
-use std::process::Output;
 use std::rc::Rc;
 use std::cell::RefCell;
 use either::Either;
@@ -1087,6 +1086,7 @@ impl TypeChecker {
                 if *ty == Type::Builtin(BuiltinType::Type) {
                     return Ok(Expression::new(expr, ty));
                 }
+                println!("check_expressions_type: {:?} {:?}", ty, tty);
                 Err(TypeError::TypeMismatch(ty.clone(), tty.clone(), 0, 0))
             }
             ExpressionRaw::Variable(ref name) => {
@@ -1283,12 +1283,16 @@ impl TypeChecker {
                 let expr = self.check_expressions_type(*expr, ty, rhs)?;
                 Ok(Expression::new(ExpressionRaw::Parenthesized(Either::Right(Box::new(expr))), ty))
             }
-            ExpressionRaw::Parenthesized(Either::Right(expr)) => unreachable!("Parenthesized should not be annotated at this time"),
+            ExpressionRaw::Parenthesized(Either::Right(_)) => unreachable!("Parenthesized should not be annotated at this time"),
             ExpressionRaw::Tuple(Either::Left(exprs)) => {
-                let exprs = exprs.into_iter().map(|x| self.check_expressions_type(x, &Type::Builtin(BuiltinType::Type), rhs)).collect::<Result<Vec<_>, _>>()?;
+                
+                let exprs = exprs.into_iter().map(|x| {
+                    let ty = self.get_expressions_type(x.clone(), rhs)?;
+                    self.check_expressions_type(x.clone(), &ty, rhs)
+                }).collect::<Result<Vec<_>, _>>()?;
                 Ok(Expression::new(ExpressionRaw::Tuple(Either::Right(exprs)), ty))
             }
-            ExpressionRaw::Tuple(Either::Right(exprs)) => unreachable!("Tuple should not be annotated at this time"),
+            ExpressionRaw::Tuple(Either::Right(_)) => unreachable!("Tuple should not be annotated at this time"),
             ExpressionRaw::IfExpression(if_) => {
                 let (if_, out_ty) = self.check_if_expression_type(if_, ty)?;
                 Ok(Expression::new(ExpressionRaw::IfExpression(if_), &out_ty))

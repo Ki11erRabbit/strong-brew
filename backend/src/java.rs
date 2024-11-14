@@ -16,7 +16,7 @@ static MUT_IMPORT: &str = "import strongbrew.Mut;\n";
 pub enum InLetBinding<'a> {
     /// Not Applicable
     NA,
-    Yes(&'a Pattern),
+    Yes(&'a Pattern, Option<char>, &'a Type),
     No(&'a Expression),
 }
 
@@ -766,23 +766,14 @@ impl JavaCodegenerator {
                                 output.push_str(self.compile_expression(expression, true, InLetBinding::NA).as_str());
                                 output.push_str(";\n");
                             }
-                            InLetBinding::Yes(name) => {
+                            InLetBinding::Yes(name, generic, ty) => {
                                 if expression.is_if_or_match() {
                                     output.push_str(self.compile_expression(expression, true, in_let).as_str());
                                     break;
                                 }
 
-                                match name {
-                                    Pattern::Variable(name) => {
-                                        output.push_str(name);
-                                        output.push_str(" = ");
+                                output.push_str(&self.compile_let_pattern(name, &ty, expression, *generic));
 
-                                        output.push_str(&self.compile_expression(expression, true, InLetBinding::NA));
-
-                                        output.push_str(";\n");
-                                    }
-                                    _ => todo!("Implement pattern matching for let statement"),
-                                }
                             }
                             InLetBinding::No(expr) => {
                                 if expression.is_if_or_match() {
@@ -806,26 +797,9 @@ impl JavaCodegenerator {
                     
                 }
                 Statement::Let { name, ty, value, start, end } => {
-                    output.push_str("final ");
-                    output.push_str(self.compile_type(ty).as_str());
-                    output.push_str(" ");
-                    let name_out = match name {
-                        Pattern::Variable(name) => name,
-                        _ => todo!("Implement pattern matching for let statement"),
-                    };
-                    if value.is_if_or_match() {
-                        output.push_str(name_out);
 
-                        output.push_str(";\n");
-
-                        output.push_str(&self.compile_expression(value, true, InLetBinding::Yes(name)));
-
-                        continue;
-                    }
-                    output.push_str(name_out);
-                    output.push_str(" = ");
-                    output.push_str(self.compile_expression(value, true, InLetBinding::NA).as_str());
-                    output.push_str(";\n");
+                    output.push_str(&self.compile_let_pattern(name, ty, value, None));
+                    
 
                 }
                 Statement::Assignment { target, value, start, end } => {
@@ -842,6 +816,55 @@ impl JavaCodegenerator {
                 }
             }
         }
+        output
+    }
+
+    fn compile_let_pattern(
+        &mut self,
+        pattern: &Pattern,
+        ty: &Type,
+        value: &Expression,
+        current_tuple: Option<char>,
+    ) -> String {
+        let mut output = String::new();
+        match pattern {
+            Pattern::Variable(name) => {
+                output.push_str("final ");
+                output.push_str(self.compile_type(ty).as_str());
+                output.push_str(" ");
+                output.push_str(name);
+
+                if value.is_if_or_match() {
+
+                    output.push_str(";\n");
+
+                    output.push_str(&self.compile_expression(value, true, InLetBinding::Yes(pattern, current_tuple, ty)));
+                    return output;
+                }
+                output.push_str(" = ");
+                output.push_str(self.compile_expression(value, true, InLetBinding::NA).as_str());
+                if let Some(current_tuple) = current_tuple {
+                    output.push_str(".");
+                    output.push(current_tuple);
+                }
+            }
+            Pattern::Wildcard => {
+                output.push_str(self.compile_expression(value, true, InLetBinding::NA).as_str());
+            }
+            Pattern::Tuple(patterns) => {
+
+                let Type::Tuple(types) = ty else {
+                    unreachable!("Tuple pattern must have a tuple type")
+                };
+
+                let iter = patterns.iter().zip(types.iter()).zip('a'..='z');
+                for ((pattern, ty), access) in iter {
+                    output.push_str(self.compile_let_pattern(pattern, ty, value, Some(access)).as_str());
+                }
+            }
+            _ => todo!("Implement pattern matching for let statement"),
+        }
+        output.push_str(";\n");
         output
     }
 
@@ -1039,6 +1062,21 @@ impl JavaCodegenerator {
                 }
 
             }
+            ExpressionRaw::Tuple(Either::Right(tuple_expr)) => {
+                let len = tuple_expr.len();
+                output.push_str("new Tuple");
+                output.push_str(&len.to_string());
+                output.push_str("<>(");
+                for (i, expr) in tuple_expr.iter().enumerate() {
+                    let expr = self.compile_expression(expr, true, InLetBinding::NA);
+                    output.push_str(expr.as_str());
+                    if i < len - 1 {
+                        output.push_str(", ");
+                    }
+                }
+                output.push_str(")");
+            }
+            ExpressionRaw::Tuple(Either::Left(_)) => unreachable!("Tuple expression should have been typechecked"),
             _ => todo!("Implement other expressions"),
         }
         output
