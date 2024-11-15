@@ -1,5 +1,6 @@
 use either::Either;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -304,7 +305,39 @@ pub enum BuiltinType {
     },
 }
 
-#[derive(Debug, Clone, PartialOrd)]
+impl BuiltinType {
+    pub fn equals(&self, other: &Self, generics: &HashMap<String, Type>) -> bool {
+        match (self, other) {
+            (BuiltinType::I8, BuiltinType::I8) => true,
+            (BuiltinType::I16, BuiltinType::I16) => true,
+            (BuiltinType::I32, BuiltinType::I32) => true,
+            (BuiltinType::I64, BuiltinType::I64) => true,
+            (BuiltinType::Int, BuiltinType::Int) => true,
+            (BuiltinType::Nat, BuiltinType::Nat) => true,
+            (BuiltinType::F32, BuiltinType::F32) => true,
+            (BuiltinType::F64, BuiltinType::F64) => true,
+            (BuiltinType::Bool, BuiltinType::Bool) => true,
+            (BuiltinType::Char, BuiltinType::Char) => true,
+            (BuiltinType::Unit, BuiltinType::Unit) => true,
+            (BuiltinType::Never, BuiltinType::Never) => true,
+            (BuiltinType::Type, BuiltinType::Type) => true,
+            (BuiltinType::Function { params: a_params, return_type: a_return_type }, BuiltinType::Function { params: b_params, return_type: b_return_type }) => {
+                if a_params.len() != b_params.len() {
+                    return false;
+                }
+                for (a, b) in a_params.iter().zip(b_params.iter()) {
+                    if !a.equals(b, generics) {
+                        return false;
+                    }
+                }
+                a_return_type.equals(b_return_type, generics)
+            }
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Type {
     /// User Types always begin with a capital letter
     User(PathName),
@@ -320,7 +353,7 @@ pub enum Type {
 impl Type {
     pub fn is_mut(&self) -> bool {
         match self {
-            Type::Parameterized(a, b) => {
+            Type::Parameterized(a, _) => {
                 let Type::User(a) = a.as_ref() else {
                     unreachable!("Type::Parameterized should always contain a Type::User")
                 };
@@ -330,23 +363,155 @@ impl Type {
             _ => false,
         }
     }
-}
 
+    pub fn has_name(&self) -> bool {
+        match self {
+            Type::User(_) => true,
+            Type::Parameterized(function, _) => {
+                let Type::User(_) = function.as_ref() else {
+                    return false
+                };
+                true
+            }
+            _ => false,
+        }
+    }
 
-impl PartialEq for Type {
-    fn eq(&self, other: &Self) -> bool {
+    pub fn get_name(&self) -> &String {
+        match self {
+            Type::User(name) => name.segments.last().unwrap(),
+            Type::Parameterized(function, params) => {
+                let Type::User(name) = function.as_ref() else {
+                    unreachable!("Type::Parameterized should always contain a Type::User")
+                };
+                let PathName { segments, .. } = name;
+                if segments.len() == 1 && segments[0] == "Mut" {
+                    params[0].get_name()
+                } else {
+                    segments.last().unwrap()
+                }
+            }
+            _ => panic!("Type does not have a name"),
+        }
+    }
+
+    pub fn is_function(&self) -> bool {
+        match self {
+            Type::Builtin(BuiltinType::Function { .. }) => true,
+            Type::Parameterized(function, _) => {
+                let Type::Builtin(BuiltinType::Function { .. }) = function.as_ref() else {
+                    return false
+                };
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn get_function_params(&self) -> Vec<Type> {
+        match self {
+            Type::Builtin(BuiltinType::Function { params, .. }) => params.clone(),
+            Type::Parameterized(function, _) => {
+                let Type::Builtin(BuiltinType::Function { params: function_params, .. }) = function.as_ref() else {
+                    unreachable!("Type::Parameterized should always contain a Type::Builtin")
+                };
+                function_params.clone()
+            }
+            _ => panic!("Type is not a function"),
+        }
+    }
+
+    pub fn get_function_return_type(&self) -> Type {
+        match self {
+            Type::Builtin(BuiltinType::Function { return_type, .. }) => *return_type.clone(),
+            Type::Parameterized(function, _) => {
+                let Type::Builtin(BuiltinType::Function { return_type, .. }) = function.as_ref() else {
+                    unreachable!("Type::Parameterized should always contain a Type::Builtin")
+                };
+                *return_type.clone()
+            }
+            _ => panic!("Type is not a function"),
+        }
+    }
+
+    pub fn get_parameterized_function_params(&self) -> Vec<Type> {
+        match self {
+            Type::Builtin(BuiltinType::Function {  .. }) => Vec::new(),
+            Type::Parameterized(function, params) => {
+                let Type::Builtin(BuiltinType::Function { .. }) = function.as_ref() else {
+                    unreachable!("Type::Parameterized should always contain a Type::Builtin")
+                };
+                params.clone()
+            }
+            _ => panic!("Type is not a parameterized function"),
+        }
+    }
+
+    pub fn is_type(&self) -> bool {
+        match self {
+            Type::Builtin(BuiltinType::Type) => true,
+            _ => false,
+        }
+    }
+
+    pub fn equals(&self, other: &Self, generics: &HashMap<String, Type>) -> bool {
+        //println!("Comparing {:?}\n       and {:?}", self, other);
         match (self, other) {
-            (Type::User(a), Type::User(b)) => a == b,
-            (Type::Builtin(a), Type::Builtin(b)) => a == b,
-            (Type::Parameterized(a, b), Type::Parameterized(c, d)) => a == c && b == d,
-            (Type::PossibleType(a), Type::PossibleType(b)) => a == b,
-            (Type::Tuple(a), Type::Tuple(b)) => a == b,
+            (Type::User(a), Type::User(b)) => {
+                let PathName { segments: a_segments, .. } = a;
+                let PathName { segments: b_segments, .. } = b;
+                if let Some(ty) = generics.get(a_segments.last().unwrap()) {
+                    if ty.is_type() {
+                        return true;
+                    }
+                } else if let Some(ty) = generics.get(b_segments.last().unwrap()) {
+                    if ty.is_type() {
+                        return true;
+                    }
+                } if a_segments.last().unwrap() == "_" || b_segments.last().unwrap() == "_" {
+                    return true;
+                }
+                a_segments == b_segments
+            },
+            //TODO: add in generics for other types
+            (Type::Builtin(a), Type::Builtin(b)) => a.equals(b, generics),
+            (Type::User(a), Type::Builtin(_)) => {
+                let PathName { segments, .. } = a;
+                if let Some(ty) = generics.get(segments.last().unwrap()) {
+                    if ty.is_type() {
+                        return true;
+                    }
+                }
+                false
+            }
+            (Type::Builtin(_), Type::User(b)) => {
+                let PathName { segments, .. } = b;
+                if let Some(ty) = generics.get(segments.last().unwrap()) {
+                    if ty.is_type() {
+                        return true;
+                    }
+                }
+                false
+            }
+            (Type::Parameterized(a, b), Type::Parameterized(c, d)) => {
+                let mut result = a.equals(c, generics);
+                for (a, b) in b.iter().zip(d.iter()) {
+                    result = result && a.equals(b, generics);
+                }
+                result
+            }
+            (Type::PossibleType(a), Type::PossibleType(b)) => {
+                a.iter().all(|x| b.iter().any(|y| x.equals(y, generics)))
+            },
+            (Type::Tuple(a), Type::Tuple(b)) => {
+                a.iter().zip(b.iter()).all(|(x, y)| x.equals(y, generics))
+            },
             (Type::Expression(a), Type::Expression(b)) => a == b,
             (Type::PossibleType(a), x) => {
-                a.iter().any(|y| y == x)
+                a.iter().any(|y| x.equals(y, generics))
             }
             (x, Type::PossibleType(a)) => {
-                a.iter().any(|y| y == x)
+                a.iter().any(|y| y.equals(x, generics))
             }
             (Type::Parameterized(a, b), x) => {
                 let Type::User(a) = a.as_ref() else {
@@ -354,7 +519,7 @@ impl PartialEq for Type {
                 };
                 let PathName { segments, .. } = a;
                 if segments.len() == 1 && segments[0] == "Mut" {
-                    b[0] == *x
+                    b[0].equals(x, generics) 
                 } else {
                     false
                 }
@@ -365,7 +530,7 @@ impl PartialEq for Type {
                 };
                 let PathName { segments, .. } = a;
                 if segments.len() == 1 && segments[0] == "Mut" {
-                    b[0] == *x
+                    b[0].equals(x, generics)
                 } else {
                     false
                 }
@@ -374,6 +539,8 @@ impl PartialEq for Type {
         }
     }
 }
+
+
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Expression {

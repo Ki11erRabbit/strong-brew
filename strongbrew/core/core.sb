@@ -272,7 +272,7 @@ pub extern "Java" fn Bool::or::(||)(x: bool, y: bool) -> bool = "
 "
 
 pub extern "Java" fn array::map[A,B](l: Array[A, n], f: fn B (A)) -> Array[B, n] = "
-    A[] output = new A[l.length];
+    B[] output = (B[])new Object[l.length];
     for (int i = 0; i < l.length; i++) {
         output[i] = f.call(l[i]);
     }
