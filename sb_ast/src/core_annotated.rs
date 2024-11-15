@@ -26,8 +26,8 @@ pub struct PathName {
 }
 
 impl PathName {
-    pub fn new(segments: Vec<&str>, start: usize, end: usize) -> PathName {
-        let segments = segments.iter().map(|s| s.to_string()).collect();
+    pub fn new<S: AsRef<str>>(segments: &Vec<S>, start: usize, end: usize) -> PathName {
+        let segments = segments.iter().map(|s| s.as_ref().to_string()).collect();
         PathName {
             segments,
             start,

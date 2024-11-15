@@ -41,7 +41,7 @@ fn generate_internal_globals() -> HashMap<Vec<String>, Rc<RefCell<Type>>> {
                        )));
     globals.insert(vec!["String"].into_iter().map(|x| x.to_string()).collect(),
                    Rc::new(RefCell::new(
-                           Type::User(PathName::new(vec!["String"], 0, 0)),
+                           Type::User(PathName::new(&vec!["String"], 0, 0)),
                        )));
     globals
 }
@@ -242,7 +242,7 @@ impl TypeChecker {
     ) -> Result<core_annotated::File, TypeError> {
         self.push_local_scope();
         let core_lang::PathName { segments, start, end } = &file.path;
-        let path = PathName::new(segments.clone(), *start, *end);
+        let path = PathName::new(&segments, *start, *end);
 
         println!("Checking file: {}", name);
 
@@ -295,7 +295,7 @@ impl TypeChecker {
             core_lang::TopLevelStatement::Import(x) => {
                 let core_lang::Import { path, start: istart, end: iend } = x;
                 let core_lang::PathName { segments, start, end } = path;
-                let path = PathName::new(segments.clone(), *start, *end);
+                let path = PathName::new(&segments, *start, *end);
                 Import::new(path.clone(), *istart, *iend)
             },
             _ => unreachable!(),
@@ -312,7 +312,7 @@ impl TypeChecker {
             let core_lang::TopLevelStatement::Enum(enum_) = enum_ else {
                 unreachable!("Encountered a non-enum after filtering only enums")
             };
-            names_to_positions.insert(enum_.name, i);
+            names_to_positions.insert(enum_.name.clone(), i);
         }
         
         let mut edges = Vec::new();
@@ -393,9 +393,9 @@ impl TypeChecker {
         }
 
         let ty = if generic_params.is_empty() {
-            let ty = Type::User(PathName::new(vec![name], *start, *end));
+            let ty = Type::User(PathName::new(&vec![name], *start, *end));
             self.add_global_type(&vec![name], Rc::new(RefCell::new(
-                Type::User(PathName::new(vec![name], *start, *end)),
+                Type::User(PathName::new(&vec![name], *start, *end)),
             )));
             ty
         } else {
@@ -404,7 +404,7 @@ impl TypeChecker {
             }).collect();
 
             let ty = Type::Parameterized(
-                        Box::new(Type::User(PathName::new(vec![name], *start, *end))),
+                        Box::new(Type::User(PathName::new(&vec![name], *start, *end))),
                         args,
             );
 
@@ -506,7 +506,7 @@ impl TypeChecker {
 
         if *variadic {
             let ty = Type::Parameterized(Box::new(
-                Type::User(PathName::new(vec!["Array"], 0, 0))), vec![ty]);
+                Type::User(PathName::new(&vec!["Array"], 0, 0))), vec![ty]);
             return Ok(ty);
         }
 
@@ -544,7 +544,7 @@ impl TypeChecker {
             core_lang::Type::User(path) => {
                 let core_lang::PathName { segments, start, end } = path;
                 let segments = segments.clone();
-                Type::User(PathName::new(segments, *start, *end))
+                Type::User(PathName::new(&segments, *start, *end))
             }
             core_lang::Type::Parameterized(main, exprs) => {
                 let main = Box::new(self.convert_type(main)?);
@@ -572,7 +572,7 @@ impl TypeChecker {
 
         if *variadic {
             let ty = Type::Parameterized(Box::new(
-                Type::User(PathName::new(vec!["Array"], 0, 0))), vec![ty]);
+                Type::User(PathName::new(&vec!["Array"], 0, 0))), vec![ty]);
             return Ok(ty);
         }
         Ok(ty)
@@ -594,13 +594,13 @@ impl TypeChecker {
             core_lang::Expression::Variable(var) => {
                 let core_lang::PathName { segments, start, end } = var;
                 let segments = segments.clone();
-                let ty = Type::User(PathName::new(segments, *start, *end));
+                let ty = Type::User(PathName::new(&segments, *start, *end));
                 Ok(ty)
             }
             core_lang::Expression::Constant(constant) => {
                 let core_lang::PathName { segments, start, end } = constant;
                 let segments = segments.clone();
-                let ty = Type::User(PathName::new(segments, *start, *end));
+                let ty = Type::User(PathName::new(&segments, *start, *end));
                 Ok(ty)
             }
             core_lang::Expression::IfExpression(_) => {
@@ -642,7 +642,7 @@ impl TypeChecker {
     ) -> Result<core_annotated::Pattern, TypeError> {
         match name {
             core_lang::Pattern::Variable(var) => {
-                match *var {
+                match var.as_str() {
                     "_" => {
                         return Ok(core_annotated::Pattern::Wildcard);
                     }
@@ -661,7 +661,7 @@ impl TypeChecker {
             core_lang::Pattern::Constructor { name, fields } => {
                 let core_lang::PathName { segments, start, end } = name;
                 let segments = segments.clone();
-                let name = PathName::new(segments, *start, *end);
+                let name = PathName::new(&segments, *start, *end);
                 let fields = fields.iter().map(|x| self.convert_pattern(x)).collect::<Result<Vec<_>, _>>()?;
                 Ok(core_annotated::Pattern::Constructor { name, fields })
             }
@@ -702,7 +702,7 @@ impl TypeChecker {
                 Type::Builtin(BuiltinType::F64),
             ]),
             Literal::Char(_) => Type::Builtin(BuiltinType::Char),
-            Literal::String(_) => Type::User(PathName::new(vec!["String"], 0, 0)),
+            Literal::String(_) => Type::User(PathName::new(&vec!["String"], 0, 0)),
             Literal::Unit => Type::Builtin(BuiltinType::Unit),
             Literal::List(_) => {
                 todo!("check for overloads of create[]");
@@ -715,7 +715,7 @@ impl TypeChecker {
             core_lang::TopLevelStatement::Const(x) => {
                 let core_lang::Const { visibility, name, ty, value, start, end } = x;
                 let core_lang::PathName { segments, start: tstart, end: tend } = name;
-                let name = PathName::new(segments.clone(), *tstart, *tend);
+                let name = PathName::new(&segments, *tstart, *tend);
                 let visibility = Self::convert_visibility(visibility);
                 let ty = self.does_type_exist_type(ty)?;
                 let value = self.convert_expression_type(value, true)?;
@@ -737,7 +737,7 @@ impl TypeChecker {
         if *variadic {
             match expr {
                 ExpressionRaw::Type(ty) => {
-                    return Ok(ExpressionRaw::Type(Type::Parameterized(Box::new(Type::User(PathName::new(vec!["Array"], 0, 0))), vec![ty])));
+                    return Ok(ExpressionRaw::Type(Type::Parameterized(Box::new(Type::User(PathName::new(&vec!["Array"], 0, 0))), vec![ty])));
                 }
                 _ => {}
             }
@@ -764,13 +764,13 @@ impl TypeChecker {
             core_lang::Expression::Variable(var) => {
                 let core_lang::PathName { segments, start, end } = var;
                 let segments = segments.clone();
-                let name = PathName::new(segments, *start, *end);
+                let name = PathName::new(&segments, *start, *end);
                 Ok(ExpressionRaw::Variable(name))
             }
             core_lang::Expression::Constant(constant) => {
                 let core_lang::PathName { segments, start, end } = constant;
                 let segments = segments.clone();
-                let name = PathName::new(segments, *start, *end);
+                let name = PathName::new(&segments, *start, *end);
                 Ok(ExpressionRaw::Constant(name))
             }
             core_lang::Expression::Call(call) => {
@@ -779,7 +779,7 @@ impl TypeChecker {
                 let type_args = type_args.iter().map(|x| self.reduce_to_type_expression_type(x)).collect::<Result<Vec<_>, _>>()?;
                 let args = args.iter().map(|x| {
                     let core_lang::CallArg { name, value, start, end } = x;
-                    let name = name.map(|x| x.to_string());
+                    let name = name.as_ref().map(|x| x.to_string());
                     let value = self.convert_expression(value, rhs)?;
                     Ok(CallArg::new(name, Either::Left(value), *start, *end))
                 }).collect::<Result<Vec<_>, _>>()?;
@@ -1619,7 +1619,7 @@ impl TypeChecker {
                     self.add_overload(segments.last().unwrap(), &segments);
                 }
 
-                let name = PathName::new(segments.clone(), *nstart, *nend);
+                let name = PathName::new(segments, *nstart, *nend);
                 let pairs = generic_params
                     .iter()
                     .map(|x| {
@@ -1691,7 +1691,7 @@ impl TypeChecker {
                     self.add_overload(segments.last().unwrap(), &segments);
                 }
 
-                let name = PathName::new(segments.clone(), *nstart, *nend);
+                let name = PathName::new(segments, *nstart, *nend);
                 let pairs = generic_params
                     .iter()
                     .map(|x| {

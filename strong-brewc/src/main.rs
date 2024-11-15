@@ -17,7 +17,12 @@ struct Args {
     output_path: String,
 }
 
-fn grab_imports<'a>(args: &Args, name: String, body: String, file: &sb_ast::outer::File<'a>) -> Vec<(String, String)> {
+fn grab_imports(
+    args: &Args,
+    name: String,
+    body: String,
+    file: sb_ast::core_lang::File
+) -> Vec<(String, String, sb_ast::core_lang::File)> {
     let mut files = vec![];
     let imports = file.get_imports();
     for import in imports {
@@ -33,7 +38,14 @@ fn grab_imports<'a>(args: &Args, name: String, body: String, file: &sb_ast::oute
                 todo!("Report error")
             }
             let file = file.unwrap();
-            files.extend(grab_imports(args, local_path, body.clone(), &file));
+
+            let result = sb_ast::convert_outer_to_inner(file);
+            if let Err(_) = result {
+                todo!("report error");
+            }
+            let file = result.unwrap();
+            let file = sb_ast::convert_inner_to_core(file);
+            files.extend(grab_imports(args, local_path, body.clone(), file));
             continue;
         }
 
@@ -44,12 +56,19 @@ fn grab_imports<'a>(args: &Args, name: String, body: String, file: &sb_ast::oute
                 todo!("Report error")
             }
             let file = file.unwrap();
-            files.extend(grab_imports(args, stdlib_path, body.clone(), &file));
+
+            let result = sb_ast::convert_outer_to_inner(file);
+            if let Err(_) = result {
+                todo!("report error");
+            }
+            let file = result.unwrap();
+            let file = sb_ast::convert_inner_to_core(file);
+            files.extend(grab_imports(args, stdlib_path, body.clone(), file));
             continue;
         }
     }
 
-    files.push((name, body));
+    files.push((name, body, file));
     
     files
 }
@@ -67,10 +86,15 @@ fn main() {
         std::process::exit(1);
     }
     let file = result.unwrap();
-    let files = grab_imports(&args, args.file.clone(), file_data.clone(), &file);
+    let result = sb_ast::convert_outer_to_inner(file);
+    if let Err(_) = result {
+        todo!("report error");
+    }
+    let file = result.unwrap();
+    let file = sb_ast::convert_inner_to_core(file);
+    let files = grab_imports(&args, args.file.clone(), file_data.clone(), file);
 
     let env_path = format!("{}/os/env.sb", args.stdlib_path);
-    println!("{}", env_path);
     let env_data = std::fs::read_to_string(&env_path).unwrap();
     
     let env = parser::parse(&env_path, &env_data);
@@ -78,24 +102,17 @@ fn main() {
         std::process::exit(1);
     }
     let env = env.unwrap();
-    let mut env_grabbed_imports = grab_imports(&args, env_path.clone(), env_data.clone(), &env);
+    let result = sb_ast::convert_outer_to_inner(env);
+    if let Err(_) = result {
+        todo!("report error");
+    }
+    let file = result.unwrap();
+    let file = sb_ast::convert_inner_to_core(file);
+    let mut env_grabbed_imports = grab_imports(&args, env_path.clone(), env_data.clone(), file);
     env_grabbed_imports.extend(files);
     let files = env_grabbed_imports;
     //println!("{:#?}", files);
     //parsed_files.push((&env_path, env)); 
-
-    let mut parsed_files = Vec::new();
-
-
-
-    for (name, data) in files.iter() {
-        println!("Parsing file: {}", name);
-        let result = parser::parse(name, data);
-        if let Err(_) = result {
-            std::process::exit(1);
-        }
-        parsed_files.push((name, result.unwrap()));
-    }
     let core_path = format!("{}/core/core.sb", args.stdlib_path);
     let core_data = std::fs::read_to_string(&core_path).unwrap();
     
@@ -104,32 +121,25 @@ fn main() {
         std::process::exit(1);
     }
     let core = core.unwrap();
-    parsed_files.insert(0, (&core_path, core));
+    let result = sb_ast::convert_outer_to_inner(core);
+    if let Err(_) = result {
+        todo!("report error");
+    }
+    let file = result.unwrap();
+    let file = sb_ast::convert_inner_to_core(file);
+    let mut core_grabbed_imports = grab_imports(&args, env_path.clone(), env_data.clone(), file);
+    core_grabbed_imports.extend(files);
+    let files = core_grabbed_imports;
 
     
-    println!("Restricting Ast");
-
-    let files = parsed_files.into_iter()
-        .map(|(name, file)| {
-            let result = sb_ast::convert_outer_to_inner(file);
-            if let Err(_) = result {
-                todo!("report error");
-            }
-            
-            (name, result.unwrap())
-        });
-
-    println!("Desugaring Ast");
-    let files = files.map(|(name, file)| {
-        let result = sb_ast::convert_inner_to_core(file);
-        (name, result)
-    }).collect::<Vec<_>>();
 
     println!("Typechecking Ast");
 
     let mut typechecker = typechecker::TypeChecker::new();
-    let names = files.iter().map(|(name, _)| name).collect::<Vec<_>>();
-    let files = typechecker.check_files(&files);
+    let names = files.iter().map(|(name, _, _)| name.clone()).collect::<Vec<_>>();
+    let bodies = files.iter().map(|(_, body, _)| body.clone()).collect::<Vec<_>>();
+    let files_to_typecheck = files.into_iter().map(|(name, _, file)| (name, file)).collect::<Vec<_>>();
+    let files = typechecker.check_files(files_to_typecheck.as_slice());
     if let Err(e) = files {
         println!("{:?}", e);
         std::process::exit(1);

@@ -1,6 +1,37 @@
 module strongbrew::core::data::array;
 
-pub extern "Java" fn array::map[A,B](l: Array[A, n], f: fn B (A)) -> Array[B, n] = "
+
+/*pub extern "Java" fn (++)[T: type](x: Array[T, n], y: Array[T, m] ) -> Array[T, n + m] = "
+    T[] result = Arrays.copyOf(x, x.length + y.length);
+    System.arraycopy(y, 0, result, x.length, y.length);
+    return result;
+"*/
+pub extern "Java" fn I32::(get[])[T: type](x: Array[T, n], y: i32) -> T = "
+    return x[y];
+"
+
+pub extern "Java" fn I64::(get[])[T: type](x: Array[T, n], y: i64) -> T = "
+    return x[(int)y];
+"
+
+pub extern "Java" fn Natural::(get[])[T: type](x: Array[T, n], y: nat) -> T = "
+    return x[y.intValue()];
+"
+
+pub extern "Java" fn Number::(get[])[T: type](x: Array[T, n], y: int) -> T = "
+    return x[y.intValue()];
+"
+
+pub extern "Java" fn I32::(set[])[T: type](x: mut Array[T, n], y: i32, value: T) = "
+    x.get()[y] = value;
+"
+
+pub extern "Java" fn I64::(set[])[T: type](x: mut Array[T, n], y: i64, value: T) = "
+    x.get()[(int)y] = value;
+"
+
+
+pub extern "Java" fn map[A,B](l: Array[A, n], f: fn B (A)) -> Array[B, n] = "
     B[] output = (B[])new Object[l.length];
     for (int i = 0; i < l.length; i++) {
         output[i] = f.call(l[i]);
@@ -8,7 +39,7 @@ pub extern "Java" fn array::map[A,B](l: Array[A, n], f: fn B (A)) -> Array[B, n]
     return output;
 "
 
-pub extern "Java" fn array::foldl[A,B](l: Array[A, _], acc: B, f: fn B (A, B)) -> B = "
+pub extern "Java" fn foldl[A,B](l: Array[A, _], acc: B, f: fn B (A, B)) -> B = "
     B output = acc;
     for (A item : l) {
         output = f.call(item, output);
@@ -16,7 +47,7 @@ pub extern "Java" fn array::foldl[A,B](l: Array[A, _], acc: B, f: fn B (A, B)) -
     return output;
 "
 
-pub extern "Java" fn array::foldr[A,B](l: Array[A, _], acc: B, f: fn B (A, B)) -> B = "
+pub extern "Java" fn foldr[A,B](l: Array[A, _], acc: B, f: fn B (A, B)) -> B = "
     B output = acc;
     for (int i = l.length - 1; i > -1; i--) {
         output = f.call(l[i], output);
@@ -24,7 +55,7 @@ pub extern "Java" fn array::foldr[A,B](l: Array[A, _], acc: B, f: fn B (A, B)) -
     return output;
 "
 
-pub extern "Java" fn array::concat[T](l: Array[Array[T, _], _]) -> Array[T, _] = "
+pub extern "Java" fn concat[T](l: Array[Array[T, _], _]) -> Array[T, _] = "
     int length = 0;
     for (T[] out : l) {
         length += out.length;
@@ -40,23 +71,23 @@ pub extern "Java" fn array::concat[T](l: Array[Array[T, _], _]) -> Array[T, _] =
     return output;
 "
 
-pub extern "Java" fn array::and(l: Array[bool, _]) -> bool = "
+pub extern "Java" fn and(l: Array[bool, _]) -> bool = "
     boolean result = true;
-    for (bool b : l) {
+    for (boolean b : l) {
         result = result && b;
     }
     return result;
 "
 
-pub extern "Java" fn array::or(l: Array[bool, _]) -> bool = "
+pub extern "Java" fn or(l: Array[bool, _]) -> bool = "
     boolean result = false;
-    for (bool b : l) {
+    for (boolean b : l) {
         result = result || b;
     }
     return result;
 "
 
-pub extern "Java" fn array::any[T](l: Array[T, _], f: fn bool (T)) -> bool = "
+pub extern "Java" fn any[T](l: Array[T, _], f: fn bool (T)) -> bool = "
     boolean result = false;
     for (T item : l) {
         result = result || f.call(item);
@@ -67,7 +98,7 @@ pub extern "Java" fn array::any[T](l: Array[T, _], f: fn bool (T)) -> bool = "
     return result;
 "
 
-pub extern "Java" fn array::all[T](l: Array[T, _], f: fn bool (T)) -> bool = "
+pub extern "Java" fn all[T](l: Array[T, _], f: fn bool (T)) -> bool = "
     boolean result = true;
     for (T item : l) {
         result = result && f.call(item);
@@ -78,39 +109,39 @@ pub extern "Java" fn array::all[T](l: Array[T, _], f: fn bool (T)) -> bool = "
     return result;
 "
 
-pub extern "Java" fn array::Natural::sum(l: Array[nat, _]) -> nat = "
+pub extern "Java" fn Natural::sum(l: Array[nat, _]) -> nat = "
     Nat result = new Nat(0);
     for (Nat item : l) {
-        result = result.add(item);
+        result = (Nat)result.add(item);
     }
     return result;
 "
 
-pub extern "Java" fn array::Number::sum(l: Array[int, _]) -> int = "
+pub extern "Java" fn Number::sum(l: Array[int, _]) -> int = "
     Int result = new Int(0);
     for (Int item : l) {
-        result = result.add(item);
+        result = (Int)result.add(item);
     }
     return result;
 "
 
-pub extern "Java" fn array::Natural::product(l: Array[nat, _]) -> nat = "
+pub extern "Java" fn Natural::product(l: Array[nat, _]) -> nat = "
     Nat result = new Nat(1);
     for (Nat item : l) {
-        result = result.multiply(item);
+        result = (Nat)result.multiply(item);
     }
     return result;
 "
 
-pub extern "Java" fn array::Number::product(l: Array[int, _]) -> int = "
+pub extern "Java" fn Number::product(l: Array[int, _]) -> int = "
     Int result = new Int(1);
     for (Int item : l) {
-        result = result.add(item);
+        result = (Int)result.add(item);
     }
     return result;
 "
 
-pub extern "Java" fn array::reverse[T](l: Array[T, n]) -> Array[T, n] = "
+pub extern "Java" fn reverse[T](l: Array[T, n]) -> Array[T, n] = "
     T[] output = (T[])new Object[l.length];
     for (int i = 0; i < l.length; i++) {
         output[i] = l[l.length - i - 1];
@@ -118,9 +149,9 @@ pub extern "Java" fn array::reverse[T](l: Array[T, n]) -> Array[T, n] = "
     return output;
 "
 
-pub extern "Java" fn array::Mutable::reverse[T](l: mut Array[T, n]) = "
-    java.lang.Collections.List<T> list = Arrays.asList(l.get());
-    java.lang.Collections.reverse(list);
-    l.set(list.toArray());
+pub extern "Java" fn Mutable::reverse[T](l: mut Array[T, n]) = "
+    java.util.List<T> list = java.util.Arrays.asList(l.get());
+    java.util.Collections.reverse(list);
+    l.set((T[])list.toArray());
 "
 

@@ -2,29 +2,40 @@ use either::Either;
 use crate::inner;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
-pub struct File<'a> {
-    pub path: PathName<'a>,
-    pub content: Vec<TopLevelStatement<'a>>,
+pub struct File {
+    pub path: PathName,
+    pub content: Vec<TopLevelStatement>,
 }
 
-impl File<'_> {
-    pub fn new<'a>(path: PathName<'a>, content: Vec<TopLevelStatement<'a>>) -> File<'a> {
+impl File {
+    pub fn new(path: PathName, content: Vec<TopLevelStatement>) -> File {
         File {
             path,
             content,
         }
     }
+
+    pub fn get_imports(&self) -> Vec<&PathName> {
+        self.content.iter().filter_map(|stmt| {
+            if let TopLevelStatement::Import(import) = stmt {
+                Some(&import.path)
+            } else {
+                None
+            }
+        }).collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
-pub struct PathName<'a> {
-    pub segments: Vec<&'a str>,
+pub struct PathName {
+    pub segments: Vec<String>,
     pub start: usize,
     pub end: usize,
 }
 
-impl PathName<'_> {
-    pub fn new(segments: Vec<&str>, start: usize, end: usize) -> PathName {
+impl PathName {
+    pub fn new<S: AsRef<str>>(segments: Vec<S>, start: usize, end: usize) -> PathName {
+        let segments = segments.into_iter().map(|s| s.as_ref().to_string()).collect();
         PathName {
             segments,
             start,
@@ -39,12 +50,12 @@ impl PathName<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
-pub enum TopLevelStatement<'a> {
-    Function(Function<'a>),
-    Enum(Enum<'a>),
-    Const(Const<'a>),
-    Import(Import<'a>),
-    Extern(&'a str, &'a str),
+pub enum TopLevelStatement {
+    Function(Function),
+    Enum(Enum),
+    Const(Const),
+    Import(Import),
+    Extern(String, String),
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
@@ -54,41 +65,41 @@ pub enum Visibility {
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
-pub enum Function<'a> {
+pub enum Function {
     Regular {
         visibility: Visibility,
-        name: PathName<'a>,
-        generic_params: Vec<GenericParam<'a>>,
-        params: Vec<Param<'a>>,
-        return_type: ExpressionType<'a>,
-        body: Vec<Statement<'a>>,
+        name: PathName,
+        generic_params: Vec<GenericParam>,
+        params: Vec<Param>,
+        return_type: ExpressionType,
+        body: Vec<Statement>,
         start: usize,
         end: usize,
     },
     Extern {
         visibility: Visibility,
-        language: &'a str,
-        name: PathName<'a>,
-        generic_params: Vec<GenericParam<'a>>,
-        params: Vec<Param<'a>>,
-        return_type: ExpressionType<'a>,
-        body: &'a str,
+        language: String,
+        name: PathName,
+        generic_params: Vec<GenericParam>,
+        params: Vec<Param>,
+        return_type: ExpressionType,
+        body: String,
         start: usize,
         end: usize,
     },
 }
 
-impl Function<'_> {
-    pub fn new<'a>(
+impl Function {
+    pub fn new(
         visibility: Visibility,
-        name: PathName<'a>,
-        generic_params: Vec<GenericParam<'a>>,
-        params: Vec<Param<'a>>,
-        return_type: ExpressionType<'a>,
-        body: Vec<Statement<'a>>,
+        name: PathName,
+        generic_params: Vec<GenericParam>,
+        params: Vec<Param>,
+        return_type: ExpressionType,
+        body: Vec<Statement>,
         start: usize,
         end: usize,
-    ) -> TopLevelStatement<'a> {
+    ) -> TopLevelStatement {
         TopLevelStatement::Function(Function::Regular {
             visibility,
             name,
@@ -101,25 +112,25 @@ impl Function<'_> {
         })
     }
 
-    pub fn new_extern<'a>(
+    pub fn new_extern(
         visibility: Visibility,
-        language: &'a str,
-        name: PathName<'a>,
-        generic_params: Vec<GenericParam<'a>>,
-        params: Vec<Param<'a>>,
-        return_type: ExpressionType<'a>,
-        body: &'a str,
+        language: &str,
+        name: PathName,
+        generic_params: Vec<GenericParam>,
+        params: Vec<Param>,
+        return_type: ExpressionType,
+        body: &str,
         start: usize,
         end: usize,
-    ) -> TopLevelStatement<'a> {
+    ) -> TopLevelStatement {
         TopLevelStatement::Function(Function::Extern {
             visibility,
-            language,
+            language: language.to_string(),
             name,
             generic_params,
             params,
             return_type,
-            body,
+            body: body.to_string(),
             start,
             end,
         })
@@ -127,57 +138,57 @@ impl Function<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Param<'a> {
+pub struct Param {
     pub implicit: bool,
-    pub name: &'a str,
-    pub ty: ExpressionType<'a>,
+    pub name: String,
+    pub ty: ExpressionType,
     pub start: usize,
     pub end: usize,
 }
 
-impl Param<'_> {
-    pub fn new<'a>(implicit: bool, name: &'a str, ty: ExpressionType<'a>, start: usize, end: usize) -> Param<'a> {
-        Param { implicit, name, ty, start, end }
+impl Param {
+    pub fn new(implicit: bool, name: &str, ty: ExpressionType, start: usize, end: usize) -> Param {
+        Param { implicit, name: name.to_string(), ty, start, end }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Field<'a> {
+pub struct Field {
     pub visibility: Visibility,
-    pub name: &'a str,
-    pub ty: ExpressionType<'a>,
+    pub name: String,
+    pub ty: ExpressionType,
     pub start: usize,
     pub end: usize,
 }
 
-impl Field<'_> {
-    pub fn new<'a>(visibility: Visibility, name: &'a str, ty: ExpressionType<'a>, start: usize, end: usize) -> Field<'a> {
-        Field { visibility, name, ty, start, end }
+impl Field {
+    pub fn new(visibility: Visibility, name: &str, ty: ExpressionType, start: usize, end: usize) -> Field {
+        Field { visibility, name: name.to_string(), ty, start, end }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Enum<'a> {
+pub struct Enum {
     pub visibility: Visibility,
-    pub name: &'a str,
-    pub generic_params: Vec<GenericParam<'a>>,
-    pub variants: Vec<Variant<'a>>,
+    pub name: String,
+    pub generic_params: Vec<GenericParam>,
+    pub variants: Vec<Variant>,
     pub start: usize,
     pub end: usize,
 }
 
-impl Enum<'_> {
-    pub fn new<'a>(
+impl Enum {
+    pub fn new(
         visibility: Visibility,
-        name: &'a str,
-        generic_params: Vec<GenericParam<'a>>,
-        variants: Vec<Variant<'a>>,
+        name: &str,
+        generic_params: Vec<GenericParam>,
+        variants: Vec<Variant>,
         start: usize,
         end: usize,
-    ) -> TopLevelStatement<'a> {
+    ) -> TopLevelStatement {
         TopLevelStatement::Enum(Enum {
             visibility,
-            name,
+            name: name.to_string(),
             generic_params,
             variants,
             start,
@@ -187,113 +198,113 @@ impl Enum<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Variant<'a> {
-    pub name: &'a str,
-    pub fields: Vec<Field<'a>>,
+pub struct Variant {
+    pub name: String,
+    pub fields: Vec<Field>,
     pub start: usize,
     pub end: usize,
 }
 
-impl Variant<'_> {
-    pub fn new<'a>(name: &'a str, fields: Vec<Field<'a>>, start: usize, end: usize) -> Variant<'a> {
-        Variant { name, fields, start, end }
+impl Variant {
+    pub fn new(name: &str, fields: Vec<Field>, start: usize, end: usize) -> Variant {
+        Variant { name: name.to_string(), fields, start, end }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Const<'a> {
+pub struct Const {
     pub visibility: Visibility,
-    pub name: PathName<'a>,
-    pub ty: ExpressionType<'a>,
-    pub value: ExpressionType<'a>,
+    pub name: PathName,
+    pub ty: ExpressionType,
+    pub value: ExpressionType,
     pub start: usize,
     pub end: usize,
 }
 
-impl Const<'_> {
-    pub fn new<'a>(
+impl Const {
+    pub fn new(
         visibility: Visibility,
-        name: PathName<'a>,
-        ty: ExpressionType<'a>,
-        value: ExpressionType<'a>,
+        name: PathName,
+        ty: ExpressionType,
+        value: ExpressionType,
         start: usize,
         end: usize,
-    ) -> TopLevelStatement<'a> {
+    ) -> TopLevelStatement {
         TopLevelStatement::Const(Const { visibility, name, ty, value, start, end })
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Import<'a> {
-    pub path: PathName<'a>,
+pub struct Import {
+    pub path: PathName,
     pub start: usize,
     pub end: usize,
 }
 
-impl Import<'_> {
-    pub fn new<'a>(path: PathName<'a>, start: usize, end: usize) -> TopLevelStatement<'a> {
+impl Import {
+    pub fn new(path: PathName, start: usize, end: usize) -> TopLevelStatement {
         TopLevelStatement::Import(Import { path, start, end })
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct GenericParam<'a> {
-    pub name: &'a str,
-    pub constraint: Option<ExpressionType<'a>>,
+pub struct GenericParam {
+    pub name: String,
+    pub constraint: Option<ExpressionType>,
     pub start: usize,
     pub end: usize,
 }
 
-impl GenericParam<'_> {
-    pub fn new<'a>(name: &'a str, constraint: Option<ExpressionType<'a>>, start: usize, end: usize) -> GenericParam<'a> {
-        GenericParam { name, constraint, start, end }
+impl GenericParam {
+    pub fn new(name: &str, constraint: Option<ExpressionType>, start: usize, end: usize) -> GenericParam {
+        GenericParam { name: name.to_string(), constraint, start, end }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum Statement<'a> {
-    Expression(ExpressionType<'a>),
+pub enum Statement {
+    Expression(ExpressionType),
     Let {
-        name: Pattern<'a>,
-        ty: ExpressionType<'a>,
-        value: ExpressionType<'a>,
+        name: Pattern,
+        ty: ExpressionType,
+        value: ExpressionType,
         start: usize,
         end: usize,
     },
     Assignment {
-        target: ExpressionType<'a>,
-        value: ExpressionType<'a>,
+        target: ExpressionType,
+        value: ExpressionType,
         start: usize,
         end: usize,
     },
 }
 
-impl Statement<'_> {
-    pub fn new_let<'a>(name: Pattern<'a>, ty: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
+impl Statement {
+    pub fn new_let(name: Pattern, ty: ExpressionType, value: ExpressionType, start: usize, end: usize) -> Statement {
         Statement::Let { name, ty, value, start, end }
     }
 
-    pub fn new_assignment<'a>(target: ExpressionType<'a>, value: ExpressionType<'a>, start: usize, end: usize) -> Statement<'a> {
+    pub fn new_assignment(target: ExpressionType, value: ExpressionType, start: usize, end: usize) -> Statement {
         Statement::Assignment { target, value, start, end }
     }
 }
 
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct ExpressionType<'a> {
-    pub expression: Expression<'a>,
+pub struct ExpressionType {
+    pub expression: Expression,
     pub variadic: bool,
 }
 
-impl ExpressionType<'_> {
-    pub fn new<'a>(expression: Expression<'a>, variadic: bool) -> ExpressionType<'a> {
+impl ExpressionType {
+    pub fn new(expression: Expression, variadic: bool) -> ExpressionType {
         ExpressionType { expression, variadic }
     }
 }
 
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum BuiltinType<'a> {
+pub enum BuiltinType {
     I8,
     I16,
     I32,
@@ -308,84 +319,84 @@ pub enum BuiltinType<'a> {
     Never,
     Type,
     Function {
-        params: Vec<ExpressionType<'a>>,
-        return_type: Box<ExpressionType<'a>>,
+        params: Vec<ExpressionType>,
+        return_type: Box<ExpressionType>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum Type<'a> {
+pub enum Type {
     /// User Types always begin with a capital letter
-    User(PathName<'a>),
-    Builtin(BuiltinType<'a>),
+    User(PathName),
+    Builtin(BuiltinType),
     /// A type that is parameterized by another type
     /// e.g. `Maybe[Int]`
-    Parameterized(Box<Type<'a>>, Vec<Expression<'a>>),
+    Parameterized(Box<Type>, Vec<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum Expression<'a> {
-    Type(Type<'a>),
+pub enum Expression {
+    Type(Type),
     /// A variable is always begins with a lowercase letter
-    Variable(PathName<'a>),
+    Variable(PathName),
     /// A constant is always completely uppercase
-    Constant(PathName<'a>),
-    Literal(Literal<'a>),
-    Call(Call<'a>),
+    Constant(PathName),
+    Literal(Literal),
+    Call(Call),
     MemberAccess {
-        object: Box<Expression<'a>>,
-        field: &'a str,
+        object: Box<Expression>,
+        field: String,
         start: usize,
         end: usize,
     },
-    Return(Option<Box<Expression<'a>>>),
-    Closure(Closure<'a>),
-    Parenthesized(Box<Expression<'a>>),
-    Tuple(Vec<ExpressionType<'a>>),
-    IfExpression(IfExpr<'a>),
-    MatchExpression(MatchExpr<'a>),
+    Return(Option<Box<Expression>>),
+    Closure(Closure),
+    Parenthesized(Box<Expression>),
+    Tuple(Vec<ExpressionType>),
+    IfExpression(IfExpr),
+    MatchExpression(MatchExpr),
     UnaryOperation {
         operator: UnaryOperator,
-        operand: Box<Expression<'a>>,
+        operand: Box<Expression>,
         start: usize,
         end: usize,
     },
     BinaryOperation {
         operator: BinaryOperator,
-        left: Box<Expression<'a>>,
-        right: Box<Expression<'a>>,
+        left: Box<Expression>,
+        right: Box<Expression>,
         start: usize,
         end: usize,
     },
 }
 
-impl Expression<'_> {
-    pub fn new_binary<'a>(
+impl Expression {
+    pub fn new_binary(
         operator: BinaryOperator,
-        left: Box<Expression<'a>>,
-        right: Box<Expression<'a>>,
+        left: Box<Expression>,
+        right: Box<Expression>,
         start: usize,
         end: usize,
-    ) -> Expression<'a> {
+    ) -> Expression {
         Expression::BinaryOperation { operator, left, right, start, end }
     }
 
-    pub fn new_unary<'a>(
+    pub fn new_unary(
         operator: UnaryOperator,
-        operand: Box<Expression<'a>>,
+        operand: Box<Expression>,
         start: usize,
         end: usize,
-    ) -> Expression<'a> {
+    ) -> Expression {
         Expression::UnaryOperation { operator, operand, start, end }
     }
 
-    pub fn new_member_access<'a>(
-        object: Box<Expression<'a>>,
-        field: &'a str,
+    pub fn new_member_access(
+        object: Box<Expression>,
+        field: &str,
         start: usize,
         end: usize,
-    ) -> Expression<'a> {
-        Expression::MemberAccess { object, field, start, end }
+    ) -> Expression {
+        Expression::MemberAccess { object, field: field.to_string(), start, end }
     }
 }
 
@@ -416,141 +427,142 @@ pub enum BinaryOperator {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum Literal<'a> {
-    Int(&'a str),
-    Float(&'a str),
-    Char(&'a str),
-    String(&'a str),
+pub enum Literal {
+    Int(String),
+    Float(String),
+    Char(String),
+    String(String),
     Bool(bool),
     Unit,
-    List(Vec<Expression<'a>>),
+    List(Vec<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Call<'a> {
-    pub name: Box<Expression<'a>>,
-    pub type_args: Vec<ExpressionType<'a>>,
-    pub args: Vec<CallArg<'a>>,
+pub struct Call {
+    pub name: Box<Expression>,
+    pub type_args: Vec<ExpressionType>,
+    pub args: Vec<CallArg>,
     pub start: usize,
     pub end: usize,
 }
 
-impl Call<'_> {
-    pub fn new<'a>(
-        name: Box<Expression<'a>>,
-        type_args: Vec<ExpressionType<'a>>,
-        args: Vec<CallArg<'a>>,
+impl Call {
+    pub fn new(
+        name: Box<Expression>,
+        type_args: Vec<ExpressionType>,
+        args: Vec<CallArg>,
         start: usize,
         end: usize,
-    ) -> Call<'a> {
+    ) -> Call {
         Call { name, type_args, args, start, end }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct CallArg<'a> {
-    pub name: Option<&'a str>,
-    pub value: Expression<'a>,
+pub struct CallArg {
+    pub name: Option<String>,
+    pub value: Expression,
     pub start: usize,
     pub end: usize,
 }
 
-impl CallArg<'_> {
-    pub fn new<'a>(name: Option<&'a str>, value: Expression<'a>, start: usize, end: usize) -> CallArg<'a> {
+impl CallArg {
+    pub fn new(name: Option<&str>, value: Expression, start: usize, end: usize) -> CallArg {
+        let name = name.map(|x| x.to_string());
         CallArg { name, value, start, end }
     }
 }
 
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Closure<'a> {
-    pub params: Vec<Param<'a>>,
-    pub return_type: Option<Box<ExpressionType<'a>>>,
-    pub body: Vec<Statement<'a>>,
+pub struct Closure {
+    pub params: Vec<Param>,
+    pub return_type: Option<Box<ExpressionType>>,
+    pub body: Vec<Statement>,
     pub start: usize,
     pub end: usize,
 }
 
-impl Closure<'_> {
-    pub fn new<'a>(
-        params: Vec<Param<'a>>,
-        return_type: Option<Box<ExpressionType<'a>>>,
-        body: Vec<Statement<'a>>,
+impl Closure {
+    pub fn new(
+        params: Vec<Param>,
+        return_type: Option<Box<ExpressionType>>,
+        body: Vec<Statement>,
         start: usize,
         end: usize,
-    ) -> Expression<'a> {
+    ) -> Expression {
         Expression::Closure(Closure { params, return_type, body, start, end })
     }
 }
 
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct IfExpr<'a> {
-    pub condition: Box<Expression<'a>>,
-    pub then_branch: Vec<Statement<'a>>,
-    pub else_branch: Option<Either<Box<IfExpr<'a>>, Vec<Statement<'a>>>>,
+pub struct IfExpr {
+    pub condition: Box<Expression>,
+    pub then_branch: Vec<Statement>,
+    pub else_branch: Option<Either<Box<IfExpr>, Vec<Statement>>>,
     pub start: usize,
     pub end: usize,
 }
 
-impl IfExpr<'_> {
-    pub fn new<'a>(
-        condition: Box<Expression<'a>>,
-        then_branch: Vec<Statement<'a>>,
-        else_branch: Option<Either<Box<IfExpr<'a>>, Vec<Statement<'a>>>>,
+impl IfExpr {
+    pub fn new(
+        condition: Box<Expression>,
+        then_branch: Vec<Statement>,
+        else_branch: Option<Either<Box<IfExpr>, Vec<Statement>>>,
         start: usize,
         end: usize,
-    ) -> IfExpr<'a> {
+    ) -> IfExpr {
         IfExpr { condition, then_branch, else_branch, start, end }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct MatchExpr<'a> {
-    pub value: Box<Expression<'a>>,
-    pub arms: Vec<MatchArm<'a>>,
+pub struct MatchExpr {
+    pub value: Box<Expression>,
+    pub arms: Vec<MatchArm>,
     pub start: usize,
     pub end: usize,
 }
 
-impl MatchExpr<'_> {
-    pub fn new<'a>(
-        value: Box<Expression<'a>>,
-        arms: Vec<MatchArm<'a>>,
+impl MatchExpr {
+    pub fn new(
+        value: Box<Expression>,
+        arms: Vec<MatchArm>,
         start: usize,
         end: usize,
-    ) -> MatchExpr<'a> {
+    ) -> MatchExpr {
         MatchExpr { value, arms, start, end }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct MatchArm<'a> {
-    pub pattern: Pattern<'a>,
-    pub value: Either<ExpressionType<'a>, Vec<Statement<'a>>>,
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub value: Either<ExpressionType, Vec<Statement>>,
     pub start: usize,
     pub end: usize,
 }
 
-impl MatchArm<'_> {
-    pub fn new<'a>(
-        pattern: Pattern<'a>,
-        value: Either<ExpressionType<'a>, Vec<Statement<'a>>>,
+impl MatchArm {
+    pub fn new(
+        pattern: Pattern,
+        value: Either<ExpressionType, Vec<Statement>>,
         start: usize,
         end: usize
-    ) -> MatchArm<'a> {
+    ) -> MatchArm {
         MatchArm { pattern, value, start, end }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum Pattern<'a> {
-    Variable(&'a str),
-    Literal(Literal<'a>),
-    Tuple(Vec<Pattern<'a>>),
+pub enum Pattern {
+    Variable(String),
+    Literal(Literal),
+    Tuple(Vec<Pattern>),
     Constructor {
-        name: PathName<'a>,
-        fields: Vec<Pattern<'a>>,
+        name: PathName,
+        fields: Vec<Pattern>,
     },
 }
 
@@ -591,7 +603,7 @@ pub fn convert_inner_to_core(file: inner::File) -> File {
                 convert_function(function)
             }
             inner::TopLevelStatement::Extern(lang, body) => {
-                TopLevelStatement::Extern(lang, body)
+                TopLevelStatement::Extern(lang.to_string(), body.to_string())
             }
         };
 
@@ -608,7 +620,7 @@ fn convert_visibility(visibility: inner::Visibility) -> Visibility {
     }
 }
 
-fn convert_generic_params<'a>(params: Vec<inner::GenericParam<'a>>) -> Vec<GenericParam<'a>> {
+fn convert_generic_params(params: Vec<inner::GenericParam>) -> Vec<GenericParam> {
     params.into_iter().map(|param| {
         let inner::GenericParam { name, constraint, start, end } = param;
         let name = name;
@@ -617,7 +629,7 @@ fn convert_generic_params<'a>(params: Vec<inner::GenericParam<'a>>) -> Vec<Gener
     }).collect()
 }
 
-fn convert_variants<'a>(variants: Vec<inner::Variant<'a>>) -> Vec<Variant<'a>> {
+fn convert_variants(variants: Vec<inner::Variant>) -> Vec<Variant> {
     variants.into_iter().map(|variant| {
         let inner::Variant { name, fields, start, end } = variant;
         let fields = fields.into_iter().map(|field| {
@@ -630,7 +642,7 @@ fn convert_variants<'a>(variants: Vec<inner::Variant<'a>>) -> Vec<Variant<'a>> {
     }).collect()
 }
 
-fn convert_struct_to_enum<'a>(struct_: inner::Struct<'a>) -> TopLevelStatement<'a> {
+fn convert_struct_to_enum(struct_: inner::Struct) -> TopLevelStatement {
     let inner::Struct { visibility, name, generic_params, fields, start, end } = struct_;
     let visibility = convert_visibility(visibility);
     let name = name;
@@ -647,7 +659,7 @@ fn convert_struct_to_enum<'a>(struct_: inner::Struct<'a>) -> TopLevelStatement<'
     Enum::new(visibility, name, generic_params, variants, start, end)
 }
 
-fn convert_function<'a>(function: inner::Function<'a>) -> TopLevelStatement<'a> {
+fn convert_function(function: inner::Function) -> TopLevelStatement {
     match function {
         inner::Function::Regular { visibility, name, generic_params, params, return_type, body, start, end } => {
             let visibility = convert_visibility(visibility);
@@ -679,7 +691,7 @@ fn convert_function<'a>(function: inner::Function<'a>) -> TopLevelStatement<'a> 
     }
 }
 
-fn convert_statement<'a>(stmt: inner::Statement<'a>) -> Statement<'a> {
+fn convert_statement(stmt: inner::Statement) -> Statement {
     match stmt {
         inner::Statement::Expression(expr) => {
             Statement::Expression(convert_expression_type_member_to_call(expr))
@@ -693,7 +705,7 @@ fn convert_statement<'a>(stmt: inner::Statement<'a>) -> Statement<'a> {
         inner::Statement::Const { name, ty, value, start, end } => {
             let ty = convert_expression_type(ty);
             let value = convert_expression_type(value);
-            let name = Pattern::Variable(name);
+            let name = Pattern::Variable(name.to_string());
             Statement::new_let(name, ty, value, start, end)
         }
         inner::Statement::Assignment { target, value, start, end } => {
@@ -704,7 +716,7 @@ fn convert_statement<'a>(stmt: inner::Statement<'a>) -> Statement<'a> {
     }
 }
 
-fn convert_expression_type<'a>(expr: inner::ExpressionType<'a>) -> ExpressionType<'a> {
+fn convert_expression_type(expr: inner::ExpressionType) -> ExpressionType {
     let inner::ExpressionType { mutable, expression, variadic } = expr;
     if mutable {
         let ty = Type::Parameterized(
@@ -718,7 +730,7 @@ fn convert_expression_type<'a>(expr: inner::ExpressionType<'a>) -> ExpressionTyp
     }
 }
 
-fn convert_expression_type_member_to_call<'a>(expr: inner::ExpressionType<'a>) -> ExpressionType<'a> {
+fn convert_expression_type_member_to_call(expr: inner::ExpressionType) -> ExpressionType {
     let inner::ExpressionType { mutable, expression, variadic } = expr;
     if mutable {
         let ty = Type::Parameterized(
@@ -733,7 +745,7 @@ fn convert_expression_type_member_to_call<'a>(expr: inner::ExpressionType<'a>) -
     }
 }
 
-fn convert_expression<'a>(expr: inner::Expression<'a>) -> Expression<'a> {
+fn convert_expression(expr: inner::Expression) -> Expression {
     match expr {
         inner::Expression::Type(ty) => {
             Expression::Type(convert_type(ty))
@@ -810,7 +822,7 @@ fn convert_expression<'a>(expr: inner::Expression<'a>) -> Expression<'a> {
     }
 }
 
-fn convert_call_expr<'a>(call: inner::Call<'a>) -> Call<'a> {
+fn convert_call_expr(call: inner::Call) -> Call {
     let inner::Call { name, type_args, args, lambdas, start, end } = call;
     let name = convert_expression(*name);
 
@@ -841,7 +853,7 @@ fn convert_call_expr<'a>(call: inner::Call<'a>) -> Call<'a> {
     Call::new(Box::new(name), type_args, args, start, end)
 }
 
-fn convert_member_access_to_call<'a>(expr: Expression<'a>) -> Expression<'a> {
+fn convert_member_access_to_call(expr: Expression) -> Expression {
     match expr {
         Expression::MemberAccess { object, field, start, end } => {
             let object = convert_member_access_to_call(*object);
@@ -853,9 +865,9 @@ fn convert_member_access_to_call<'a>(expr: Expression<'a>) -> Expression<'a> {
     }
 }
 
-fn convert_pattern<'a>(pattern: inner::Pattern<'a>) -> Pattern<'a> {
+fn convert_pattern(pattern: inner::Pattern) -> Pattern {
     match pattern {
-        inner::Pattern::Variable(name) => Pattern::Variable(name),
+        inner::Pattern::Variable(name) => Pattern::Variable(name.to_string()),
         inner::Pattern::Literal(literal) => Pattern::Literal(convert_literal(literal)),
         inner::Pattern::Tuple(patterns) => {
             let patterns = patterns.into_iter().map(convert_pattern).collect();
@@ -869,12 +881,12 @@ fn convert_pattern<'a>(pattern: inner::Pattern<'a>) -> Pattern<'a> {
     }
 }
 
-fn convert_literal<'a>(literal: inner::Literal<'a>) -> Literal<'a> {
+fn convert_literal(literal: inner::Literal) -> Literal {
     match literal {
-        inner::Literal::Int(int) => Literal::Int(int),
-        inner::Literal::Float(float) => Literal::Float(float),
-        inner::Literal::Char(char) => Literal::Char(char),
-        inner::Literal::String(string) => Literal::String(string),
+        inner::Literal::Int(int) => Literal::Int(int.to_string()),
+        inner::Literal::Float(float) => Literal::Float(float.to_string()),
+        inner::Literal::Char(c) => Literal::Char(c.to_string()),
+        inner::Literal::String(string) => Literal::String(string.to_string()),
         inner::Literal::Bool(bool) => Literal::Bool(bool),
         inner::Literal::Unit => Literal::Unit,
         inner::Literal::List(list) => {
@@ -884,7 +896,7 @@ fn convert_literal<'a>(literal: inner::Literal<'a>) -> Literal<'a> {
     }
 }
 
-fn convert_lambda<'a>(lambda: inner::Closure<'a>) -> Closure<'a> {
+fn convert_lambda(lambda: inner::Closure) -> Closure {
     let inner::Closure { params, return_type, body, start, end } = lambda;
     let params = params.into_iter().map(|param| {
         let inner::Param { implicit, name, ty, start, end } = param;
@@ -902,7 +914,7 @@ fn convert_lambda<'a>(lambda: inner::Closure<'a>) -> Closure<'a> {
     }
 }
 
-fn convert_if_expr<'a>(if_expr: inner::IfExpr<'a>) -> IfExpr<'a> {
+fn convert_if_expr(if_expr: inner::IfExpr) -> IfExpr {
     let inner::IfExpr { condition, then_branch, else_branch, start, end } = if_expr;
     let condition = Box::new(convert_expression(*condition));
     let then_branch = then_branch.into_iter().map(convert_statement).collect();
@@ -920,7 +932,7 @@ fn convert_if_expr<'a>(if_expr: inner::IfExpr<'a>) -> IfExpr<'a> {
     IfExpr::new(condition, then_branch, else_branch, start, end)
 }
 
-fn convert_match_expr<'a>(match_expr: inner::MatchExpr<'a>) -> MatchExpr<'a> {
+fn convert_match_expr(match_expr: inner::MatchExpr) -> MatchExpr {
     let inner::MatchExpr { value, arms, start, end } = match_expr;
     let value = Box::new(convert_expression(*value));
     let arms = arms.into_iter().map(|arm| {
@@ -935,7 +947,7 @@ fn convert_match_expr<'a>(match_expr: inner::MatchExpr<'a>) -> MatchExpr<'a> {
     MatchExpr::new(value, arms, start, end)
 }
 
-fn convert_type<'a>(ty: inner::Type<'a>) -> Type<'a> {
+fn convert_type(ty: inner::Type) -> Type {
     match ty {
         inner::Type::User(path) => Type::User(PathName::from(path)),
         inner::Type::Builtin(builtin) => {
