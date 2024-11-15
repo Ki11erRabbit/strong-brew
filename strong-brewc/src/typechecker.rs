@@ -579,7 +579,6 @@ impl TypeChecker {
     }
     
     fn reduce_to_type(&mut self, expr: &core_lang::Expression) -> Result<Type, TypeError> {
-
         match expr {
             core_lang::Expression::Type(ty) => {
                 self.convert_type(ty)
@@ -618,6 +617,11 @@ impl TypeChecker {
                 let tuple = tuple.into_iter().map(|x| {
                     match x {
                         ExpressionRaw::Type(ty) => Ok(ty),
+                        ExpressionRaw::Constant(path) => {
+                            let core_annotated::PathName { segments, start, end } = path;
+                            let segments = segments.clone();
+                            Ok(Type::User(PathName::new(&segments, start, end)))
+                        }
                         _ => {
                             Err(TypeError::NotAType)
                         },

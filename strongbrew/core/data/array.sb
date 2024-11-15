@@ -155,3 +155,43 @@ pub extern "Java" fn Mutable::reverse[T](l: mut Array[T, n]) = "
     l.set((T[])list.toArray());
 "
 
+pub extern "Java" fn zip[A,B](a: Array[A, _], b: Array[B, _]) -> Array[(A,B), _] = "
+    int shortest = a.length < b.length ? a.length : b.length;
+    Tuple2[] output = new Tuple2[shortest];
+    for (int i = 0; i < shortest; i++) {
+        output[i] = new Tuple2(a[i], b[i]);
+    }
+    return output;
+"
+
+pub extern "Java" fn unzip[A,B](l: Array[(A,B), _]) -> (Array[A, _], Array[B, _]) = "
+    A[] a = (A[])new Object[l.length];
+    B[] b = (B[])new Object[l.length];
+    for (int i = 0; i < l.length; i++) {
+        a[i] = l[i].a
+        b[i] = l[i].b;
+    }
+    return new Tuple2(a, b);
+"
+
+pub extern "Java" fn zip3[A,B,C](a: Array[A, _], b: Array[B, _], c: Array[C, _]) -> Array[(A,B,C), _] = "
+    int shortest = a.length < b.length ? a.length : b.length;
+    shortest = shortest < c.length ? shortest : c.length;
+    Tuple3[] output = new Tuple3[shortest];
+    for (int i = 0; i < shortest; i++) {
+        output[i] = new Tuple3(a[i], b[i], c[i]);
+    }
+    return output;
+"
+
+pub extern "Java" fn unzip3[A,B,C](l: Array[(A,B,C), _]) -> (Array[A, _], Array[B, _], Array[C, _]) = "
+    A[] a = (A[])new Object[l.length];
+    B[] b = (B[])new Object[l.length];
+    C[] c = (C[])new Object[l.length];
+    for (int i = 0; i < l.length; i++) {
+        a[i] = l[i].a;
+        b[i] = l[i].b;
+        c[i] = l[i].c;
+    }
+    return new Tuple3(a, b, c);
+"
