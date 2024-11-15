@@ -1,0 +1,126 @@
+module strongbrew::core::data::array;
+
+pub extern "Java" fn array::map[A,B](l: Array[A, n], f: fn B (A)) -> Array[B, n] = "
+    B[] output = (B[])new Object[l.length];
+    for (int i = 0; i < l.length; i++) {
+        output[i] = f.call(l[i]);
+    }
+    return output;
+"
+
+pub extern "Java" fn array::foldl[A,B](l: Array[A, _], acc: B, f: fn B (A, B)) -> B = "
+    B output = acc;
+    for (A item : l) {
+        output = f.call(item, output);
+    }
+    return output;
+"
+
+pub extern "Java" fn array::foldr[A,B](l: Array[A, _], acc: B, f: fn B (A, B)) -> B = "
+    B output = acc;
+    for (int i = l.length - 1; i > -1; i--) {
+        output = f.call(l[i], output);
+    }
+    return output;
+"
+
+pub extern "Java" fn array::concat[T](l: Array[Array[T, _], _]) -> Array[T, _] = "
+    int length = 0;
+    for (T[] out : l) {
+        length += out.length;
+    }
+    T[] output = (T[])new Object[length];
+    int index = 0;
+    for (T[] out : l) {
+        for (T item : out) {
+            output[index] = item;
+            index += 1;
+        }
+    }
+    return output;
+"
+
+pub extern "Java" fn array::and(l: Array[bool, _]) -> bool = "
+    boolean result = true;
+    for (bool b : l) {
+        result = result && b;
+    }
+    return result;
+"
+
+pub extern "Java" fn array::or(l: Array[bool, _]) -> bool = "
+    boolean result = false;
+    for (bool b : l) {
+        result = result || b;
+    }
+    return result;
+"
+
+pub extern "Java" fn array::any[T](l: Array[T, _], f: fn bool (T)) -> bool = "
+    boolean result = false;
+    for (T item : l) {
+        result = result || f.call(item);
+        if (result) {
+            return result;
+        }
+    }
+    return result;
+"
+
+pub extern "Java" fn array::all[T](l: Array[T, _], f: fn bool (T)) -> bool = "
+    boolean result = true;
+    for (T item : l) {
+        result = result && f.call(item);
+        if (!result) {
+            return result;
+        }
+    }
+    return result;
+"
+
+pub extern "Java" fn array::Natural::sum(l: Array[nat, _]) -> nat = "
+    Nat result = new Nat(0);
+    for (Nat item : l) {
+        result = result.add(item);
+    }
+    return result;
+"
+
+pub extern "Java" fn array::Number::sum(l: Array[int, _]) -> int = "
+    Int result = new Int(0);
+    for (Int item : l) {
+        result = result.add(item);
+    }
+    return result;
+"
+
+pub extern "Java" fn array::Natural::product(l: Array[nat, _]) -> nat = "
+    Nat result = new Nat(1);
+    for (Nat item : l) {
+        result = result.multiply(item);
+    }
+    return result;
+"
+
+pub extern "Java" fn array::Number::product(l: Array[int, _]) -> int = "
+    Int result = new Int(1);
+    for (Int item : l) {
+        result = result.add(item);
+    }
+    return result;
+"
+
+pub extern "Java" fn array::reverse[T](l: Array[T, n]) -> Array[T, n] = "
+    T[] output = (T[])new Object[l.length];
+    for (int i = 0; i < l.length; i++) {
+        output[i] = l[l.length - i - 1];
+    }
+    return output;
+"
+
+pub extern "Java" fn array::Mutable::reverse[T](l: mut Array[T, n]) = "
+    java.lang.Collections.List<T> list = Arrays.asList(l.get());
+    java.lang.Collections.reverse(list);
+    l.set(list.toArray());
+"
+
