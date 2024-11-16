@@ -82,6 +82,7 @@ pub struct TypeChecker {
     current_return_type: Option<Type>,
     current_param_type: Option<Type>,
     current_generic_params: HashMap<String, Type>,
+    equivalent_types: HashMap<Type, Type>,
 }
 
 impl TypeChecker {
@@ -96,6 +97,7 @@ impl TypeChecker {
             current_return_type: None,
             current_param_type: None,
             current_generic_params: HashMap::new(),
+            equivalent_types: HashMap::new(),
         }
     }
     pub fn add_overload<S, R>(&mut self, name: S, overload: &Vec<R>)
@@ -164,10 +166,13 @@ impl TypeChecker {
         
     }
 
-    pub fn get_generic_params<S>(&self, name: &Vec<S>) -> Option<&Vec<GenericParam>>
-    where S: AsRef<str> {
-        let name: Vec<String> = name.into_iter().map(|x| x.as_ref().to_string()).collect();
-        self.generic_params.get(&name)
+    pub fn add_equivalent_types(&mut self, ty1: Type, ty2: Type) {
+        self.equivalent_types.insert(ty1.clone(), ty2.clone());
+        self.equivalent_types.insert(ty2, ty1);
+    }
+
+    pub fn get_equivalent_types(&self) -> &HashMap<Type, Type> {
+        &self.equivalent_types
     }
 
     pub fn push_local_scope(&mut self) {
@@ -378,12 +383,18 @@ impl TypeChecker {
 
         self.add_global_type(&vec![name], Rc::new(RefCell::new(constructor_type)));
 
+        let mut equivalent_type = Vec::new();
+
         for field in fields.iter() {
             let ty = Type::User(PathName::new(&vec![name], *start, *end));
             let param = Param::new(false, &field.name, ty, 0, 0);
             let getter_type = create_function_type(vec![param], field.ty.clone());
             self.add_global_type(&vec![&field.name], Rc::new(RefCell::new(getter_type)));
+            equivalent_type.push(field.ty.clone());
         }
+
+        let ty = Type::Tuple(equivalent_type);
+        self.add_equivalent_types(ty.clone(), Type::User(PathName::new(&vec![name], *start, *end)));
 
         self.pop_local_scope();
 
@@ -1245,7 +1256,7 @@ impl TypeChecker {
 
         match expr {
             ExpressionRaw::Type(ref tty) => {
-                if ty.equals(&Type::Builtin(BuiltinType::Type), self.get_current_generic_params()) {
+                if ty.equals(&Type::Builtin(BuiltinType::Type), self.get_current_generic_params(), self.get_equivalent_types()) {
                     return Ok(Expression::new(expr, ty));
                 }
                 //println!("check_expressions_type: {:?} {:?}", ty, tty);
@@ -1255,7 +1266,7 @@ impl TypeChecker {
                 let vty = self.get_type(&name.segments).unwrap();
                 let vty = vty.clone();
                 let vty = vty.borrow();
-                if vty.equals(ty, self.get_current_generic_params()) {
+                if vty.equals(ty, self.get_current_generic_params(), self.get_equivalent_types()) {
                     if vty.is_mut() {
                         return Ok(Expression::new(expr, &vty));
                     }
@@ -1267,7 +1278,7 @@ impl TypeChecker {
                 let vty = self.get_type(&name.segments).unwrap();
                 let vty = vty.clone();
                 let vty = vty.borrow();
-                if vty.equals(ty, self.get_current_generic_params()) {
+                if vty.equals(ty, self.get_current_generic_params(), self.get_equivalent_types()) {
                     if vty.is_mut() {
                         return Ok(Expression::new(expr, &vty));
                     }
@@ -1280,13 +1291,13 @@ impl TypeChecker {
                 match &lit_ty {
                     Type::PossibleType(types) => {
                         for lty in types {
-                            if lty.equals(ty, self.get_current_generic_params()) {
+                            if lty.equals(ty, self.get_current_generic_params(), self.get_equivalent_types()) {
                                 return Ok(Expression::new(expr, ty));
                             }
                         }
                     }
                     _ => {
-                        if lit_ty.equals(ty, self.get_current_generic_params()) {
+                        if lit_ty.equals(ty, self.get_current_generic_params(), self.get_equivalent_types()) {
                             if lit_ty.is_mut() {
                                 return Ok(Expression::new(expr, &lit_ty));
                             }
@@ -1370,7 +1381,7 @@ impl TypeChecker {
 
                             let return_type = function.get_function_return_type();
                             
-                            if return_type.equals(ty, self.get_current_generic_params()) {
+                            if return_type.equals(ty, self.get_current_generic_params(), self.get_equivalent_types()) {
                                 return Ok(Expression::new(expression, &return_type));
                             }
                             return Err(TypeError::TypeMismatch(ty.clone(), return_type, cstart, cend));
@@ -1514,7 +1525,7 @@ impl TypeChecker {
                     if params.len() == 1 && params[0] == operand_ty {
                         operand_type = Some(return_type.clone());
                         overloaded_function = Some(overload.clone());
-                        if return_type.equals(ty, self.get_current_generic_params()) {
+                        if return_type.equals(ty, self.get_current_generic_params(), self.get_equivalent_types()) {
                             break;
                         }
                     }
@@ -1580,7 +1591,9 @@ impl TypeChecker {
                         continue;
                     };
 
-                    if params.len() == 2 && params[0].equals(&left_ty, self.get_current_generic_params()) && params[1].equals(&right_ty, self.get_current_generic_params()) {
+                    if params.len() == 2 &&
+                        params[0].equals(&left_ty, self.get_current_generic_params(), self.get_equivalent_types()) &&
+                        params[1].equals(&right_ty, self.get_current_generic_params(), self.get_equivalent_types()) {
                         left_type = Some(params[0].clone());
                         right_type = Some(params[1].clone());
                         overloaded_function = Some(overload.clone());
@@ -1636,7 +1649,8 @@ impl TypeChecker {
         let (then_branch, then_type) = self.check_statements_type(then_branch, ty)?;
 
 
-        if else_type.equals(ty, self.get_current_generic_params()) && then_type.equals(ty, self.get_current_generic_params()) {
+        if else_type.equals(ty, self.get_current_generic_params(), self.get_equivalent_types()) &&
+            then_type.equals(ty, self.get_current_generic_params(), self.get_equivalent_types()) {
             return Ok((IfExpr::new(condition, then_branch, else_branch, start, end), ty.clone()));
         }
         Err(TypeError::TypeMismatch(ty.clone(), then_type, start, end))
@@ -1671,7 +1685,7 @@ impl TypeChecker {
         match statement {
             core_annotated::Statement::Expression(expr) => {
                 let Expression { ty: e_ty, raw } = self.check_expressions_type(expr.raw.clone(), ty, true)?;
-                if ty.equals(&e_ty.borrow(), self.get_current_generic_params()) {
+                if ty.equals(&e_ty.borrow(), self.get_current_generic_params(), self.get_equivalent_types()) {
                     let statement = core_annotated::Statement::Expression(Expression::new(raw.clone(), ty));
                     return Ok(statement);
                 } else {
@@ -1679,12 +1693,12 @@ impl TypeChecker {
                 }
             }
             core_annotated::Statement::Assignment { .. } => {
-                if ty.equals(&Type::Builtin(BuiltinType::Unit), self.get_current_generic_params()) {
+                if ty.equals(&Type::Builtin(BuiltinType::Unit), self.get_current_generic_params(), self.get_equivalent_types()) {
                     return Ok(statement.clone());
                 }
             }
             core_annotated::Statement::Let { .. } => {
-                if ty.equals(&Type::Builtin(BuiltinType::Unit), self.get_current_generic_params()) {
+                if ty.equals(&Type::Builtin(BuiltinType::Unit), self.get_current_generic_params(), self.get_equivalent_types()) {
                     return Ok(statement.clone());
                 }
             }

@@ -1,6 +1,7 @@
 use either::Either;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -18,7 +19,7 @@ impl File {
     }
 }
 
-#[derive(Debug, Clone, PartialOrd, Hash)]
+#[derive(Debug, Clone, PartialOrd, Eq)]
 pub struct PathName {
     pub segments: Vec<String>,
     pub start: usize,
@@ -39,6 +40,12 @@ impl PathName {
 impl PartialEq for PathName {
     fn eq(&self, other: &Self) -> bool {
         self.segments == other.segments
+    }
+}
+
+impl Hash for PathName {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.segments.hash(state);
     }
 }
 
@@ -131,7 +138,7 @@ impl Function {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub struct Param {
     pub implicit: bool,
     pub name: String,
@@ -287,7 +294,7 @@ impl GenericParam {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub enum Statement {
     Expression(Expression),
     Let {
@@ -317,7 +324,7 @@ impl Statement {
 
 
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub enum BuiltinType {
     I8,
     I16,
@@ -339,7 +346,7 @@ pub enum BuiltinType {
 }
 
 impl BuiltinType {
-    pub fn equals(&self, other: &Self, generics: &HashMap<String, Type>) -> bool {
+    pub fn equals(&self, other: &Self, generics: &HashMap<String, Type>, equivalent_types: &HashMap<Type, Type>) -> bool {
         match (self, other) {
             (BuiltinType::I8, BuiltinType::I8) => true,
             (BuiltinType::I16, BuiltinType::I16) => true,
@@ -359,18 +366,18 @@ impl BuiltinType {
                     return false;
                 }
                 for (a, b) in a_params.iter().zip(b_params.iter()) {
-                    if !a.equals(b, generics) {
+                    if !a.equals(b, generics, equivalent_types) {
                         return false;
                     }
                 }
-                a_return_type.equals(b_return_type, generics)
+                a_return_type.equals(b_return_type, generics, equivalent_types)
             }
             _ => false,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialOrd, Eq, Hash)]
 pub enum Type {
     /// User Types always begin with a capital letter
     User(PathName),
@@ -487,7 +494,12 @@ impl Type {
         }
     }
 
-    pub fn equals(&self, other: &Self, generics: &HashMap<String, Type>) -> bool {
+    pub fn equals(
+        &self,
+        other: &Self,
+        generics: &HashMap<String, Type>,
+        equivalent_types: &HashMap<Type, Type>
+    ) -> bool {
         //println!("Comparing {:?}\n       and {:?}", self, other);
         match (self, other) {
             (Type::User(a), Type::User(b)) => {
@@ -507,7 +519,7 @@ impl Type {
                 a_segments == b_segments
             },
             //TODO: add in generics for other types
-            (Type::Builtin(a), Type::Builtin(b)) => a.equals(b, generics),
+            (Type::Builtin(a), Type::Builtin(b)) => a.equals(b, generics, equivalent_types),
             (Type::User(a), Type::Builtin(_)) => {
                 let PathName { segments, .. } = a;
                 if let Some(ty) = generics.get(segments.last().unwrap()) {
@@ -527,24 +539,24 @@ impl Type {
                 false
             }
             (Type::Parameterized(a, b), Type::Parameterized(c, d)) => {
-                let mut result = a.equals(c, generics);
+                let mut result = a.equals(c, generics, equivalent_types);
                 for (a, b) in b.iter().zip(d.iter()) {
-                    result = result && a.equals(b, generics);
+                    result = result && a.equals(b, generics, equivalent_types);
                 }
                 result
             }
             (Type::PossibleType(a), Type::PossibleType(b)) => {
-                a.iter().all(|x| b.iter().any(|y| x.equals(y, generics)))
+                a.iter().all(|x| b.iter().any(|y| x.equals(y, generics, equivalent_types)))
             },
             (Type::Tuple(a), Type::Tuple(b)) => {
-                a.iter().zip(b.iter()).all(|(x, y)| x.equals(y, generics))
+                a.iter().zip(b.iter()).all(|(x, y)| x.equals(y, generics, equivalent_types))
             },
             (Type::Expression(a), Type::Expression(b)) => a == b,
             (Type::PossibleType(a), x) => {
-                a.iter().any(|y| x.equals(y, generics))
+                a.iter().any(|y| x.equals(y, generics, equivalent_types))
             }
             (x, Type::PossibleType(a)) => {
-                a.iter().any(|y| y.equals(x, generics))
+                a.iter().any(|y| y.equals(x, generics, equivalent_types))
             }
             (Type::Parameterized(a, b), x) => {
                 let Type::User(a) = a.as_ref() else {
@@ -552,7 +564,7 @@ impl Type {
                 };
                 let PathName { segments, .. } = a;
                 if segments.len() == 1 && segments[0] == "Mut" {
-                    b[0].equals(x, generics) 
+                    b[0].equals(x, generics, equivalent_types) 
                 } else {
                     false
                 }
@@ -563,19 +575,84 @@ impl Type {
                 };
                 let PathName { segments, .. } = a;
                 if segments.len() == 1 && segments[0] == "Mut" {
-                    b[0].equals(x, generics)
+                    b[0].equals(x, generics, equivalent_types)
                 } else {
                     false
                 }
             }
-            _ => false,
+            (x, y) => {
+                if let Some(ty) = equivalent_types.get(x) {
+                    return ty.equals(y, generics, equivalent_types);
+                } else if let Some(ty) = equivalent_types.get(y) {
+                    return ty.equals(x, generics, equivalent_types);
+                }
+                false
+            }
+        }
+    }
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Type::User(a), Type::User(b)) => {
+                let PathName { segments: a_segments, .. } = a;
+                let PathName { segments: b_segments, .. } = b;
+                a_segments == b_segments
+            },
+            //TODO: add in generics for other types
+            (Type::Builtin(a), Type::Builtin(b)) => a == b,
+            (Type::Parameterized(a, b), Type::Parameterized(c, d)) => {
+                let mut result = a == c;
+                for (a, b) in b.iter().zip(d.iter()) {
+                    result = result && a == b;
+                }
+                result
+            }
+            (Type::PossibleType(a), Type::PossibleType(b)) => {
+                a.iter().all(|x| b.iter().any(|y| x == y))
+            },
+            (Type::Tuple(a), Type::Tuple(b)) => {
+                a.iter().zip(b.iter()).all(|(x, y)| x == y)
+            },
+            (Type::Expression(a), Type::Expression(b)) => a == b,
+            (Type::PossibleType(a), x) => {
+                a.iter().any(|y| x == y)
+            }
+            (x, Type::PossibleType(a)) => {
+                a.iter().any(|y| y == x)
+            }
+            (Type::Parameterized(a, b), x) => {
+                let Type::User(a) = a.as_ref() else {
+                    unreachable!("Type::Parameterized should always contain a Type::User")
+                };
+                let PathName { segments, .. } = a;
+                if segments.len() == 1 && segments[0] == "Mut" {
+                    b[0] == *x
+                } else {
+                    false
+                }
+            }
+            (x, Type::Parameterized(a, b)) => {
+                let Type::User(a) = a.as_ref() else {
+                    unreachable!("Type::Parameterized should always contain a Type::User")
+                };
+                let PathName { segments, .. } = a;
+                if segments.len() == 1 && segments[0] == "Mut" {
+                    b[0] == *x
+                } else {
+                    false
+                }
+            }
+            _ => {
+                false
+            }
         }
     }
 }
 
 
-
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq)]
 pub struct Expression {
     pub raw: ExpressionRaw,
     pub ty: Rc<RefCell<Type>>,
@@ -594,8 +671,14 @@ impl Expression {
     }
 }
 
+impl Hash for Expression {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.raw.hash(state);
+        self.ty.borrow().hash(state);
+    }
+}
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub enum ExpressionRaw {
     Type(Type),
     /// A variable is always begins with a lowercase letter
@@ -672,7 +755,7 @@ pub enum BinaryOperator {
     Index
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub enum Literal {
     Int(String),
     Float(String),
@@ -683,7 +766,7 @@ pub enum Literal {
     List(Vec<ExpressionRaw>),
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub struct Call {
     pub name: Box<ExpressionRaw>,
     pub type_args: Vec<Type>,
@@ -705,7 +788,7 @@ impl Call {
 
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub struct CallArg {
     pub name: Option<String>,
     pub value: Either<ExpressionRaw, Expression>,
@@ -731,7 +814,7 @@ impl CallArg {
 }
 
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub struct Closure {
     pub params: Vec<Param>,
     pub return_type: Option<Box<Type>>,
@@ -753,7 +836,7 @@ impl Closure {
 }
 
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub struct IfExpr {
     pub condition: Box<Expression>,
     pub then_branch: Vec<Statement>,
@@ -774,7 +857,7 @@ impl IfExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub struct MatchExpr {
     pub value: Box<Expression>,
     pub arms: Vec<MatchArm>,
@@ -793,7 +876,7 @@ impl MatchExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub struct MatchArm {
     pub pattern: Pattern,
     pub value: Either<Expression, Vec<Statement>>,
@@ -812,7 +895,7 @@ impl MatchArm {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub enum Pattern {
     Wildcard,
     Variable(String),

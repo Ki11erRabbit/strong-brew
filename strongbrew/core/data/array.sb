@@ -1,36 +1,6 @@
 module strongbrew::core::data::array;
 
 
-/*pub extern "Java" fn (++)[T: type](x: Array[T, n], y: Array[T, m] ) -> Array[T, n + m] = "
-    T[] result = Arrays.copyOf(x, x.length + y.length);
-    System.arraycopy(y, 0, result, x.length, y.length);
-    return result;
-"*/
-pub extern "Java" fn I32::(get[])[T: type](x: Array[T, n], y: i32) -> T = "
-    return x[y];
-"
-
-pub extern "Java" fn I64::(get[])[T: type](x: Array[T, n], y: i64) -> T = "
-    return x[(int)y];
-"
-
-pub extern "Java" fn Natural::(get[])[T: type](x: Array[T, n], y: nat) -> T = "
-    return x[y.intValue()];
-"
-
-pub extern "Java" fn Number::(get[])[T: type](x: Array[T, n], y: int) -> T = "
-    return x[y.intValue()];
-"
-
-pub extern "Java" fn I32::(set[])[T: type](x: mut Array[T, n], y: i32, value: T) = "
-    x.get()[y] = value;
-"
-
-pub extern "Java" fn I64::(set[])[T: type](x: mut Array[T, n], y: i64, value: T) = "
-    x.get()[(int)y] = value;
-"
-
-
 pub extern "Java" fn map[A,B](l: Array[A, n], f: fn B (A)) -> Array[B, n] = "
     B[] output = (B[])new Object[l.length];
     for (int i = 0; i < l.length; i++) {

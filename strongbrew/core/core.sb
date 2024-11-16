@@ -230,6 +230,38 @@ pub extern "Java" fn str::Number::(get[])(x: String, y: int) -> char = "
     return x.charAt(y.intValue());
 "
 
+/*pub extern "Java" fn arr::(++)[T: type](x: Array[T, n], y: Array[T, m] ) -> Array[T, n + m] = "
+    T[] result = Arrays.copyOf(x, x.length + y.length);
+    System.arraycopy(y, 0, result, x.length, y.length);
+    return result;
+"*/
+pub extern "Java" fn arr::I32::(get[])[T: type](x: Array[T, n], y: i32) -> T = "
+    return x[y];
+"
+
+pub extern "Java" fn arr::I64::(get[])[T: type](x: Array[T, n], y: i64) -> T = "
+    return x[(int)y];
+"
+
+pub extern "Java" fn arr::Natural::(get[])[T: type](x: Array[T, n], y: nat) -> T = "
+    return x[y.intValue()];
+"
+
+pub extern "Java" fn arr::Number::(get[])[T: type](x: Array[T, n], y: int) -> T = "
+    return x[y.intValue()];
+"
+
+pub extern "Java" fn arr::I32::(set[])[T: type](x: mut Array[T, n], y: i32, value: T) = "
+    x.get()[y] = value;
+"
+
+pub extern "Java" fn arr::I64::(set[])[T: type](x: mut Array[T, n], y: i64, value: T) = "
+    x.get()[(int)y] = value;
+"
+
+
+
+
 pub extern "Java" fn Bool::not::(!)(x: bool) -> bool = "
     return !x;
 "
