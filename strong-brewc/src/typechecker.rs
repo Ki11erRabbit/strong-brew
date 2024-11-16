@@ -247,6 +247,7 @@ impl TypeChecker {
         println!("Checking file: {}", name);
 
         let mut imports = Vec::new();
+        let mut structs = Vec::new();
         let mut enums = Vec::new();
         let mut consts = Vec::new();
         let mut functions = Vec::new();
@@ -257,6 +258,9 @@ impl TypeChecker {
             match decl {
                 core_lang::TopLevelStatement::Import(_) => {
                     imports.push(decl);
+                }
+                core_lang::TopLevelStatement::Struct(_) => {
+                    structs.push(decl);
                 }
                 core_lang::TopLevelStatement::Enum(_) => {
                     enums.push(decl);
@@ -274,11 +278,13 @@ impl TypeChecker {
         }
 
         let imports = Self::convert_imports(imports);
+        let structs = self.check_structs(structs)?;
         let enums = self.check_enums(enums)?;
         let consts = self.check_consts(consts)?;
         let functions = self.check_functions(functions)?;
 
         let mut decl = imports;
+        decl.extend(structs);
         decl.extend(enums);
         decl.extend(consts);
         decl.extend(functions);
@@ -302,6 +308,87 @@ impl TypeChecker {
         }).collect()
     }
 
+    fn check_structs(&mut self, structs: Vec<&core_lang::TopLevelStatement>) -> Result<Vec<TopLevelStatement>, TypeError> {
+        let mut result = Vec::new();
+        for struct_ in structs {
+            let core_lang::TopLevelStatement::Struct(struct_) = struct_ else {
+                unreachable!("Encountered a non-struct after filtering only structs")
+            };
+            let struct_ = self.check_struct(struct_)?;
+            result.push(struct_);
+        }
+        Ok(result)
+    }
+
+    fn check_struct(&mut self, struct_: &core_lang::Struct) -> Result<TopLevelStatement, TypeError> {
+        let core_lang::Struct {
+            visibility,
+            name,
+            generic_params,
+            fields,
+            start,
+            end,
+        } = struct_;
+
+        self.push_local_scope();
+
+        let visibility = Self::convert_visibility(visibility);
+        let pairs = generic_params
+            .iter()
+            .map(|x| {
+                let (p, (names, ty)) = self.convert_generic_parameter(x)?;
+                for name in names {
+                    self.add_local_type(&vec![name], Rc::new(RefCell::new(ty.clone())));
+                }
+                Ok((p, ty))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut generic_params = Vec::new();
+        let mut generic_args = Vec::new();
+        for (param, ty) in pairs {
+            generic_params.push(param);
+            generic_args.push(ty);
+        }
+
+        let ty = if generic_params.is_empty() {
+            let ty = Type::User(PathName::new(&vec![name], *start, *end));
+            self.add_global_type(&vec![name], Rc::new(RefCell::new(
+                Type::User(PathName::new(&vec![name], *start, *end)),
+            )));
+            ty
+        } else {
+            let args = generic_args.into_iter().map(|x| {
+                x
+            }).collect();
+
+            let ty = Type::Parameterized(
+                        Box::new(Type::User(PathName::new(&vec![name], *start, *end))),
+                        args,
+            );
+
+            let rc_ty = Rc::new(RefCell::new(ty.clone()));
+            self.add_global_type(&vec![name], rc_ty);
+            ty
+        };
+
+        let fields = fields.iter().map(|x| self.check_field(x)).collect::<Result<Vec<_>, _>>()?;
+
+        let constructor_type = create_constructor_type(fields.clone(), ty.clone());
+
+        self.add_global_type(&vec![name], Rc::new(RefCell::new(constructor_type)));
+
+        for field in fields.iter() {
+            let ty = Type::User(PathName::new(&vec![name], *start, *end));
+            let param = Param::new(false, &field.name, ty, 0, 0);
+            let getter_type = create_function_type(vec![param], field.ty.clone());
+            self.add_global_type(&vec![&field.name], Rc::new(RefCell::new(getter_type)));
+        }
+
+        self.pop_local_scope();
+
+        Ok(core_annotated::Struct::new(visibility, name.clone(), generic_params, fields, *start, *end))
+    }
 
     fn check_enums(&mut self, enums: Vec<&core_lang::TopLevelStatement>) -> Result<Vec<TopLevelStatement>, TypeError> {
         let mut result = Vec::new();
@@ -1192,8 +1279,8 @@ impl TypeChecker {
                 let lit_ty = self.get_literal_type(&lit);
                 match &lit_ty {
                     Type::PossibleType(types) => {
-                        for ty in types {
-                            if ty.equals(ty, self.get_current_generic_params()) {
+                        for lty in types {
+                            if lty.equals(ty, self.get_current_generic_params()) {
                                 return Ok(Expression::new(expr, ty));
                             }
                         }
@@ -1211,7 +1298,12 @@ impl TypeChecker {
             }
             ExpressionRaw::Call(call) => {
                 let core_annotated::Call { name, type_args, args, start: cstart, end: cend } = call;
-                let ExpressionRaw::Variable(name) = *name else {
+                let name = if let ExpressionRaw::Variable(name) = *name {
+                    name
+                } else if let ExpressionRaw::Type(Type::User(path)) = *name {
+                    path
+                } else {
+                    println!("{:#?}", name);
                     unreachable!("Call name must be a variable")
                 };
 
@@ -1221,6 +1313,7 @@ impl TypeChecker {
                 } else {
                     let overloads = self.get_overloads(&name.segments.last().unwrap());
                     if overloads.is_none() {
+                        //println!("Function does not exist1: {:#?}", self.global_types);
                         return Err(TypeError::FunctionDoesNotExist(name.segments.clone(), cstart, cend));
                     }
                     let overloads = overloads.unwrap().clone();
@@ -1823,6 +1916,7 @@ impl TypeChecker {
                 let pattern = self.check_pattern_types(pattern, ty.clone())?;
                 
                 let value = self.convert_expression_type(&value, true)?;
+
 
                 let value = self.check_expressions_type(value, &ty, true)?;
 

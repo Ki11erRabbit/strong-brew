@@ -52,6 +52,7 @@ impl PathName {
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub enum TopLevelStatement {
     Function(Function),
+    Struct(Struct),
     Enum(Enum),
     Const(Const),
     Import(Import),
@@ -151,6 +152,37 @@ impl Param {
         Param { implicit, name: name.to_string(), ty, start, end }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub struct Struct {
+    pub visibility: Visibility,
+    pub name: String,
+    pub generic_params: Vec<GenericParam>,
+    pub fields: Vec<Field>,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Struct {
+    pub fn new<'a>(
+        visibility: Visibility,
+        name: String,
+        generic_params: Vec<GenericParam>,
+        fields: Vec<Field>,
+        start: usize,
+        end: usize,
+    ) -> TopLevelStatement {
+        TopLevelStatement::Struct(Struct {
+            visibility,
+            name,
+            generic_params,
+            fields,
+            start,
+            end,
+        })
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Field {
@@ -597,7 +629,7 @@ pub fn convert_inner_to_core(file: inner::File) -> File {
                 Enum::new(visibility, name, generic_params, variants, start, end)
             }
             inner::TopLevelStatement::Struct(struct_) => {
-                convert_struct_to_enum(struct_)
+                convert_struct(struct_)
             }
             inner::TopLevelStatement::Function(function) => {
                 convert_function(function)
@@ -642,7 +674,7 @@ fn convert_variants(variants: Vec<inner::Variant>) -> Vec<Variant> {
     }).collect()
 }
 
-fn convert_struct_to_enum(struct_: inner::Struct) -> TopLevelStatement {
+fn convert_struct(struct_: inner::Struct) -> TopLevelStatement {
     let inner::Struct { visibility, name, generic_params, fields, start, end } = struct_;
     let visibility = convert_visibility(visibility);
     let name = name;
@@ -653,10 +685,7 @@ fn convert_struct_to_enum(struct_: inner::Struct) -> TopLevelStatement {
         let ty = convert_expression_type(ty);
         Field::new(visibility, name, ty, start, end)
     }).collect();
-    let variants = vec![
-        Variant::new(name, fields, start, end)
-            ];
-    Enum::new(visibility, &format!("struct-{}",name), generic_params, variants, start, end)
+    Struct::new(visibility, name.to_string(), generic_params, fields, start, end)
 }
 
 fn convert_function(function: inner::Function) -> TopLevelStatement {

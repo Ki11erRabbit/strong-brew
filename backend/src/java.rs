@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use sb_ast::core_annotated::{BuiltinType, Call, CallArg, Closure, Enum, Expression, ExpressionRaw, File, Function, GenericParam, IfExpr, Import, Literal, Param, PathName, Pattern, Statement, TopLevelStatement, Type, Variant, Visibility};
+use sb_ast::core_annotated::{BuiltinType, Call, CallArg, Closure, Enum, Expression, ExpressionRaw, Field, File, Function, GenericParam, IfExpr, Import, Literal, Param, PathName, Pattern, Statement, Struct, TopLevelStatement, Type, Variant, Visibility};
 
 use either::Either;
 use crate::Codegenerator;
@@ -314,6 +314,130 @@ impl JavaCodegenerator {
                 let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
                 top_level_output.push_str(format!("import static {}.*;\n", segments.join(".")).as_str());
             }
+            TopLevelStatement::Struct(struct_) => {
+                let Struct { visibility, name, generic_params, fields, .. } = struct_;
+
+                match visibility {
+                    Visibility::Public => {
+                        output.push_str("public ");
+                    }
+                    Visibility::Private => {
+                        output.push_str("private ");
+                    }
+                }
+
+                output.push_str("class ");
+                let name = Self::convert_identifier(name);
+                output.push_str(&name);
+
+                if !generic_params.is_empty() {
+                    output.push_str("<");
+                    output.push_str(self.compile_generic_params(generic_params).as_str());
+                    output.push_str(">");
+                }
+
+                output.push_str(" {\n");
+
+                let mut constructor = format!("public static {} {}", name, name);
+                let mut constructor_body = format!("return new {}", name);
+                let mut internal_constructor = format!("public {}", name);
+                let mut internal_constructor_body = String::new();
+                if !generic_params.is_empty() {
+                    constructor.push_str("<");
+                    constructor.push_str(self.compile_generic_params(generic_params).as_str());
+                    constructor.push_str(">");
+                    constructor_body.push_str("<");
+                    constructor_body.push_str(">");
+                    internal_constructor.push_str("<");
+                    internal_constructor.push_str(self.compile_generic_params(generic_params).as_str());
+                    internal_constructor.push_str(">");
+                }
+
+                constructor.push_str("(");
+                internal_constructor.push_str("(");
+                constructor_body.push_str("(");
+
+                let class_name = name;
+
+                for (i, field) in fields.iter().enumerate() {
+                    let Field { visibility, name, ty, .. } = field;
+
+                    self.add_constructor(vec![class_name.clone()], name.clone());
+                    
+                    let mut getter = match visibility {
+                        Visibility::Public => {
+                            output.push_str("public ");
+                            String::from("public static ")
+                        }
+                        Visibility::Private => {
+                            //output.push_str("");
+                            String::from("private static ")
+                        }
+                    };
+
+                    getter.push_str(self.compile_type(ty).as_str());
+                    getter.push_str(" ");
+
+                    output.push_str(self.compile_type(ty).as_str());
+                    output.push_str(" ");
+                    output.push_str(Self::convert_identifier(name).as_str());
+                    output.push_str(";\n");
+
+                    getter.push_str(Self::convert_identifier(name).as_str());
+
+                    getter.push_str("(");
+                    getter.push_str(class_name.as_str());
+                    getter.push_str(" self) {\n");
+
+                    getter.push_str("return self.");
+                    getter.push_str(Self::convert_identifier(name).as_str());
+                    getter.push_str(";\n}\n");
+
+                    constructor.push_str(self.compile_type(ty).as_str());
+                    constructor.push_str(" ");
+                    constructor.push_str(Self::convert_identifier(name).as_str());
+
+                    constructor_body.push_str(Self::convert_identifier(name).as_str());
+
+                    internal_constructor.push_str(self.compile_type(ty).as_str());
+                    internal_constructor.push_str(" ");
+                    internal_constructor.push_str(Self::convert_identifier(name).as_str());
+
+                    internal_constructor_body.push_str("this.");
+                    internal_constructor_body.push_str(Self::convert_identifier(name).as_str());
+                    internal_constructor_body.push_str(" = ");
+                    internal_constructor_body.push_str(Self::convert_identifier(name).as_str());
+                    internal_constructor_body.push_str(";\n");
+
+                    
+                    
+                    if i < fields.len() - 1 {
+                        constructor.push_str(", ");
+                        constructor_body.push_str(", ");
+                        internal_constructor.push_str(", ");
+                    }
+                    top_level_output.push_str(getter.as_str());
+                    top_level_output.push_str("\n");
+                }
+
+
+                constructor.push_str(") {\n");
+                constructor.push_str(constructor_body.as_str());
+                constructor.push_str(");\n}\n");
+
+                internal_constructor.push_str(") {\n");
+                internal_constructor.push_str(internal_constructor_body.as_str());
+                internal_constructor.push_str("\n}\n");
+
+                output.push_str(internal_constructor.as_str());
+
+                output.push_str("}\n");
+
+                output_vec.push((class_name.clone(), output));
+
+                top_level_output.push_str(constructor.as_str());
+                top_level_output.push_str("\n");
+            }
             TopLevelStatement::Enum(enum_) => {
                 let Enum { visibility, name, generic_params, variants, .. } = enum_;
 
@@ -329,12 +453,6 @@ impl JavaCodegenerator {
                 // Enums are represented as abstract classes in Java with an implementation for each variant.
                 // It should also contain constructor static methods to create each variant.
                 output.push_str("abstract class ");
-                let was_struct;
-                if name.contains("struct-") {
-                    was_struct = true;
-                } else {
-                    was_struct = false;
-                }
                 let name = Self::convert_identifier(name);
                 output.push_str(&name);
 
@@ -409,11 +527,7 @@ impl JavaCodegenerator {
 
                     for (i, field) in fields.into_iter().enumerate() {
 
-                        if was_struct {
-                            self.add_constructor(vec![class_name.clone()], field.name.clone());
-                        } else {
-                            self.add_constructor(vec![class_name.clone(), name.clone()], field.name.clone());
-                        }
+                        self.add_constructor(vec![class_name.clone(), name.clone()], field.name.clone());
                         
                         variant_output.push_str("public ");
                         variant_output.push_str(self.compile_type(&field.ty).as_str());
@@ -457,11 +571,7 @@ impl JavaCodegenerator {
                     constructor.push_str(new_call.as_str());
                     constructor.push_str("\n}\n");
 
-                    if was_struct {
-                        top_level_output.push_str(constructor.as_str());
-                    } else {
-                        output.push_str(constructor.as_str());
-                    }
+                    output.push_str(constructor.as_str());
 
                     output_vec.push((name.clone(), variant_output));
                 }
@@ -939,7 +1049,6 @@ impl JavaCodegenerator {
         variable: InLetBinding
     ) -> String {
         let mut output = String::new();
-
         let Expression { raw, ty, .. } = expr;
         
         match raw {

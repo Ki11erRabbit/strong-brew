@@ -45,6 +45,7 @@ impl PartialEq for PathName {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum TopLevelStatement {
     Function(Function),
+    Struct(Struct),
     Enum(Enum),
     Const(Const),
     Import(Import),
@@ -144,6 +145,38 @@ impl Param {
         Param { implicit, name: name.to_string(), ty, start, end }
     }
 }
+
+#[derive(Debug, Clone, PartialEq,  PartialOrd)]
+pub struct Struct {
+    pub visibility: Visibility,
+    pub name: String,
+    pub generic_params: Vec<GenericParam>,
+    pub fields: Vec<Field>,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Struct {
+    pub fn new<'a>(
+        visibility: Visibility,
+        name: String,
+        generic_params: Vec<GenericParam>,
+        fields: Vec<Field>,
+        start: usize,
+        end: usize,
+    ) -> TopLevelStatement {
+        TopLevelStatement::Struct(Struct {
+            visibility,
+            name,
+            generic_params,
+            fields,
+            start,
+            end,
+        })
+    }
+}
+
+
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Field {
