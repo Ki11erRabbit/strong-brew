@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use sb_ast::core_annotated::{BuiltinType, Call, CallArg, Closure, Enum, Expression, ExpressionRaw, Field, File, Function, GenericParam, IfExpr, Import, Literal, Param, PathName, Pattern, Statement, Struct, TopLevelStatement, Type, Variant, Visibility};
+use sb_ast::core_annotated::{BuiltinType, Call, CallArg, Closure, Enum, Expression, ExpressionRaw, Field, File, Function, GenericParam, IfExpr, Import, Literal, MatchArm, MatchExpr, Param, PathName, Pattern, Statement, Struct, TopLevelStatement, Type, Variant, Visibility};
 
 use either::Either;
 use crate::Codegenerator;
@@ -134,6 +134,18 @@ impl JavaCodegenerator {
                 let mut map = HashMap::new();
                 map.insert(tag, value);
                 entry.insert(map);
+            }
+        }
+    }
+
+    fn get_tag_for_enum(&mut self, enum_name: &str, tag: &str) -> Option<usize> {
+        let map = self.tags_for_enum.get(enum_name);
+        match map {
+            Some(map) => {
+                map.get(tag).cloned()
+            }
+            None => {
+                None
             }
         }
     }
@@ -552,8 +564,28 @@ impl JavaCodegenerator {
                     let mut contructor_body = String::new();
 
 
-
                     for (i, field) in fields.into_iter().enumerate() {
+
+                        let getter = {
+                            let Field { visibility, name, ty, .. } = field;
+                            let mut getter = match visibility {
+                                Visibility::Public => {
+                                    String::from("public ")
+                                }
+                                Visibility::Private => {
+                                    String::from("private ")
+                                }
+                            };
+                            getter.push_str(self.compile_type(ty).as_str());
+                            getter.push_str(" ");
+                            getter.push_str(Self::convert_identifier(name).as_str());
+                            getter.push_str("() {\n");
+                            getter.push_str("return this.");
+                            getter.push_str(Self::convert_identifier(name).as_str());
+                            getter.push_str(";\n}\n");
+                            getter
+                        };
+                        
 
                         self.add_constructor(vec![class_name.clone(), name.clone()], field.name.clone());
                         
@@ -582,6 +614,7 @@ impl JavaCodegenerator {
                             new_call.push_str(", ");
                             internal_constructor.push_str(", ");
                         }
+                        variant_output.push_str(getter.as_str());
                     }
                     internal_constructor.push_str(") {\n");
                     internal_constructor.push_str(contructor_body.as_str());
@@ -1275,6 +1308,175 @@ impl JavaCodegenerator {
                 output.push_str(")");
             }
             ExpressionRaw::Tuple(Either::Left(_)) => unreachable!("Tuple expression should have been typechecked"),
+            ExpressionRaw::MatchExpression(match_) => {
+                let MatchExpr { value, arms, .. } = match_;
+                output.push_str("switch (");
+                let Expression { ty, .. } = &value.as_ref();
+                if let Type::User(path) = &*ty.borrow() {
+                    let PathName { segments, .. } = path;
+                    if segments.last().unwrap().as_str() == "String" {
+                        output.push_str(&self.compile_expression(value, true, InLetBinding::NA));
+                    } else {
+                        output.push_str(&self.compile_expression(value, true, InLetBinding::NA));
+                        output.push_str(".tag()");
+                    }
+                } else {
+                    output.push_str(self.compile_expression(value, true, InLetBinding::NA).as_str());
+                    output.push_str(".tag()");
+                }
+                output.push_str(") {\n");
+                let match_arg = value;
+                for arm in arms {
+                    let MatchArm { pattern, value, .. } = arm;
+                    match pattern {
+                        Pattern::Wildcard => {
+                            output.push_str("default:\n");
+                            match value {
+                                Either::Right(statements) => {
+                                    output.push_str(self.compile_statements(statements, rhs, InLetBinding::NA).as_str());
+                                }
+                                Either::Left(expr) => {
+                                    match variable {
+                                        InLetBinding::Yes(name, generic, ty) => {
+                                            output.push_str(self.compile_let_pattern(name, ty, expr,generic).as_str());
+                                        }
+                                        _ => {
+                                            output.push_str(self.compile_expression(expr, true, InLetBinding::NA).as_str());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Pattern::Literal(lit) => {
+                            match lit {
+                                Literal::Int(value) => {
+                                    output.push_str("case ");
+                                    output.push_str(&value);
+                                    output.push_str(":\n");
+                                }
+                                Literal::Float(value) => {
+                                    output.push_str("case ");
+                                    output.push_str(&value);
+                                    output.push_str(":\n");
+                                }
+                                Literal::Bool(value) => {
+                                    output.push_str("case ");
+                                    output.push_str(&value.to_string());
+                                    output.push_str(":\n");
+                                }
+                                Literal::Char(value) => {
+                                    output.push_str("case '");
+                                    output.push_str(&value.to_string());
+                                    output.push_str("':\n");
+                                }
+                                Literal::String(value) => {
+                                    output.push_str("case \"");
+                                    output.push_str(&value);
+                                    output.push_str("\":\n");
+                                }
+                                Literal::Unit => {
+                                    output.push_str("case null:\n");
+                                }
+                                _ => todo!("Implement other literals"),
+                            }
+                            match value {
+                                Either::Right(statements) => {
+                                    output.push_str(self.compile_statements(statements, rhs, InLetBinding::NA).as_str());
+                                }
+                                Either::Left(expr) => {
+                                    match variable {
+                                        InLetBinding::Yes(name, generic, ty) => {
+                                            output.push_str(self.compile_let_pattern(name, ty, expr, generic).as_str());
+                                        }
+                                        _ => {
+                                            output.push_str(self.compile_expression(expr, true, InLetBinding::NA).as_str());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Pattern::Variable(var) => {
+                            output.push_str("default:\n");
+                            match value {
+                                Either::Right(statements) => {
+                                    output.push_str(&self.compile_type(&ty.borrow()));
+                                    output.push_str(" ");
+                                    output.push_str(var);
+                                    output.push_str(" = ");
+                                    output.push_str(self.compile_expression(match_arg, true, InLetBinding::NA).as_str());
+                                    
+                                    output.push_str(self.compile_statements(statements, rhs, InLetBinding::NA).as_str());
+                                }
+                                Either::Left(expr) => {
+                                    match variable {
+                                        InLetBinding::Yes(name, generic, ty) => {
+                                            output.push_str(self.compile_let_pattern(name, ty, expr, generic).as_str());
+                                        }
+                                        _ => {
+                                            output.push_str(self.compile_expression(expr, true, InLetBinding::NA).as_str());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Pattern::Constructor { name, fields } => {
+                            let PathName { segments, .. } = name;
+                            let Type::Tuple(types) = &*ty.borrow() else {
+                                unreachable!("Constructor pattern must have a tuple type")
+                            };
+                            let part1 = segments.iter().rev().skip(1).next().unwrap();
+                            let part2 = segments.iter().rev().next().unwrap();
+                            let Some(tag) = self.get_tag_for_enum(part1, part2) else {
+                                unreachable!("Enum tag must be known at this time")
+                            };
+
+                            output.push_str("case ");
+                            output.push_str(&tag.to_string());
+                            output.push_str(":\n");
+
+                            let constructor = self.constructors.get(segments).unwrap().clone();
+                            let iter = fields.iter().zip(constructor.iter()).zip(types.iter());
+                            for ((field, constructor), ty) in iter {
+                                output.push_str(&self.compile_type(ty));
+                                output.push_str(" ");
+                                match field {
+                                    Pattern::Variable(name) => {
+                                        output.push_str(name);
+                                    }
+                                    _ => {
+                                        todo!("Implement other patterns for constructor fields")
+                                    }
+                                }
+                                output.push_str(&format!(" = (({})", part2));
+                                output.push_str(self.compile_expression(match_arg, true, InLetBinding::NA).as_str());
+                                output.push_str(").");
+                                output.push_str(constructor);
+                                output.push_str("();\n");
+                            }
+
+                            match value {
+                                Either::Right(statements) => {
+                                    output.push_str(self.compile_statements(statements, rhs, InLetBinding::NA).as_str());
+                                }
+                                Either::Left(expr) => {
+                                    match variable {
+                                        InLetBinding::Yes(name, generic, ty) => {
+                                            output.push_str(self.compile_let_pattern(name, ty, expr, generic).as_str());
+                                        }
+                                        _ => {
+                                            output.push_str(self.compile_expression(expr, true, InLetBinding::NA).as_str());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => todo!("Implement other patterns for match expression"),
+                    }
+
+                    output.push_str("break;\n");
+                }
+                output.push_str("}\n");
+            }
             _ => todo!("Implement other expressions"),
         }
         output

@@ -1,6 +1,6 @@
 use petgraph::algo;
 use petgraph::graph::UnGraph;
-use sb_ast::core_annotated::{self, BinaryOperator, BuiltinType, Call, CallArg, Enum, Expression, ExpressionRaw, Field, GenericParam, IfExpr, Import, Literal, Param, PathName, TopLevelStatement, Type, UnaryOperator};
+use sb_ast::core_annotated::{self, BinaryOperator, BuiltinType, Call, CallArg, Enum, Expression, ExpressionRaw, Field, GenericParam, IfExpr, Import, Literal, MatchArm, MatchExpr, Param, PathName, TopLevelStatement, Type, UnaryOperator};
 use sb_ast::core_lang;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -951,7 +951,28 @@ impl TypeChecker {
                 Ok(ExpressionRaw::IfExpression(self.convert_if_expression(if_, rhs)?))
             }
             core_lang::Expression::MatchExpression(match_) => {
-                todo!("convert match")
+                let core_lang::MatchExpr { value, arms, start, end } = match_;
+                let value = self.convert_expression(value, rhs)?;
+                let value = Expression::new(value, &Type::Builtin(BuiltinType::Unit));
+                let arms = arms.iter().map(|x| {
+                    let core_lang::MatchArm { pattern, value, start, end } = x;
+
+                    let value = match value {
+                        Either::Left(expr) => {
+                            let expr = self.convert_expression_type(expr, rhs)?;
+                            let expr = Expression::new(expr, &Type::Builtin(BuiltinType::Unit));
+                            Either::Left(expr)
+                        }
+                        Either::Right(statements) => {
+                            let statements = self.check_statements(statements)?;
+                            Either::Right(statements)
+                        }
+                    };
+                    let pattern = self.convert_pattern(pattern)?;
+                    Ok(MatchArm::new(pattern, value, *start, *end))
+                }).collect::<Result<Vec<_>, _>>()?;
+
+                Ok(ExpressionRaw::MatchExpression(MatchExpr::new(Box::new(value), arms, *start, *end)))
             }
             core_lang::Expression::UnaryOperation { operator, operand, start, end } => {
                 let operator = match operator {
@@ -1131,8 +1152,8 @@ impl TypeChecker {
             ExpressionRaw::IfExpression(if_) => {
                 self.get_if_expression_type(if_)
             }
-            ExpressionRaw::MatchExpression(_) => {
-                todo!("implement typechecking for match expressions")
+            ExpressionRaw::MatchExpression(match_) => {
+                self.get_match_expression_type(match_)
             }
             ExpressionRaw::UnaryOperation { operator, operand, start, end } => {
                 let operator = match operator {
@@ -1243,6 +1264,45 @@ impl TypeChecker {
         }
 
         Ok(then_branch)
+    }
+
+    fn get_match_expression_type(
+        &mut self,
+        match_: MatchExpr
+    ) -> Result<Type, TypeError> {
+        let MatchExpr { arms, start, end, .. } = match_;
+
+        let mut return_type: Option<Type> = None;
+
+        for arm in arms {
+            let core_annotated::MatchArm { value, .. } = arm;
+            match value {
+                Either::Left(value) => {
+                    let Expression { raw, .. } = value;
+                    let value = self.get_expressions_type(raw, true)?;
+                    if let Some(ref return_ty) = return_type {
+                        if *return_ty != value {
+                            return Err(TypeError::TypeMismatch(return_ty.clone(), value, start, end));
+                        }
+                    } else {
+                        return_type = Some(value);
+                    }
+
+                }
+                Either::Right(statements) => {
+                    let value = self.get_statements_type(&statements.last().unwrap())?;
+                    if let Some(ref return_ty) = return_type {
+                        if *return_ty != value {
+                            return Err(TypeError::TypeMismatch(return_ty.clone(), value, start, end));
+                        }
+                    } else {
+                        return_type = Some(value);
+                    }
+                }
+            };
+        }
+
+        Ok(return_type.unwrap())
     }
 
     fn check_expressions_type(
@@ -1408,18 +1468,22 @@ impl TypeChecker {
 
                 let args = args.into_iter().enumerate().map(|(i, x)| {
                     let core_annotated::CallArg { name, value, start, end } = x;
-                    let Either::Left(value) = value else {
-                        unreachable!("CallArg value must not be annotated at this time")
-                    };
-                    let backup = self.get_param_type();
-                    self.set_param_type(params[i].clone());
-                    let value = self.check_expressions_type(value, &params[i], rhs)?;
-                    if let Some(backup) = backup {
-                        self.set_param_type(backup);
-                    } else {
-                        self.unset_param_type();
+                    match value {
+                        Either::Left(value) => {
+                            let backup = self.get_param_type();
+                            self.set_param_type(params[i].clone());
+                            let value = self.check_expressions_type(value, &params[i], rhs)?;
+                            if let Some(backup) = backup {
+                                self.set_param_type(backup);
+                            } else {
+                                self.unset_param_type();
+                            }
+                            Ok(CallArg::new(name, Either::Right(value), start, end))
+                        }
+                        value => {
+                            Ok(CallArg::new(name, value, start, end))
+                        }
                     }
-                    Ok(CallArg::new(name, Either::Right(value), start, end))
                 }).collect::<Result<Vec<_>, _>>()?;
 
                 let return_type = function.get_function_return_type();
@@ -1493,8 +1557,9 @@ impl TypeChecker {
                 let (if_, out_ty) = self.check_if_expression_type(if_, ty)?;
                 Ok(Expression::new(ExpressionRaw::IfExpression(if_), &out_ty))
             }
-            ExpressionRaw::MatchExpression(_) => {
-                todo!("implement typechecking for match expressions")
+            ExpressionRaw::MatchExpression(match_) => {
+                let (match_, out_ty) = self.check_match_expression_type(match_, ty)?;
+                Ok(Expression::new(ExpressionRaw::MatchExpression(match_), &out_ty))
             }
             ExpressionRaw::UnaryOperation { operator, operand, start, end } => {
                 let operator = match operator {
@@ -1655,6 +1720,54 @@ impl TypeChecker {
             return Ok((IfExpr::new(condition, then_branch, else_branch, start, end), ty.clone()));
         }
         Err(TypeError::TypeMismatch(ty.clone(), then_type, start, end))
+    }
+
+    fn check_match_expression_type(
+        &mut self,
+        match_: MatchExpr,
+        ty: &Type
+    ) -> Result<(MatchExpr, Type), TypeError> {
+        let MatchExpr { value, arms, start, end, .. } = match_;
+
+        let Expression { raw, .. } = value.as_ref();
+        let value_ty = self.get_expressions_type(raw.clone(), true)?;
+        let value = self.check_expressions_type(raw.clone(), &value_ty, true)?;
+
+        let mut return_type: Option<Type> = None;
+
+        let mut new_arms = Vec::new();
+
+        for arm in arms {
+            let core_annotated::MatchArm { pattern, value, start, end } = arm;
+            let value = match value {
+                Either::Left(value) => {
+                    let Expression { raw, .. } = value;
+                    let e_ty = self.get_expressions_type(raw.clone(), true)?;
+                    if let Some(ref return_ty) = return_type {
+                        if !return_ty.equals(&e_ty, self.get_current_generic_params(), self.get_equivalent_types()) {
+                            return Err(TypeError::TypeMismatch(return_ty.clone(), e_ty.clone(), start, end));
+                        }
+                    } else {
+                        return_type = Some(e_ty.clone());
+                    }
+                    Either::Left(Expression::new(raw, &e_ty))
+                }
+                Either::Right(statements) => {
+                    let (statements, value) = self.check_statements_type(statements, ty)?;
+                    if let Some(ref return_ty) = return_type {
+                        if !return_ty.equals(&value, self.get_current_generic_params(), self.get_equivalent_types()) {
+                            return Err(TypeError::TypeMismatch(return_ty.clone(), value.clone(), start, end));
+                        }
+                    } else {
+                        return_type = Some(value.clone());
+                    }
+                    Either::Right(statements)
+                }
+            };
+            new_arms.push(MatchArm::new(pattern, value, start, end));
+        }
+
+        Ok((MatchExpr::new(Box::new(value), new_arms, start, end), ty.clone()))
     }
 
     /// This function checks if the last statement's type matches the expected type
