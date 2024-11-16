@@ -355,7 +355,14 @@ impl TypeChecker {
             let core_lang::TopLevelStatement::Enum(enum_) = enum_ else {
                 unreachable!("Encountered a non-enum after filtering only enums")
             };
-            result.push(self.check_enum(enum_)?);
+            let enum_ = self.check_enum(enum_)?;
+
+            let core_annotated::TopLevelStatement::Enum(enum_) = enum_ else {
+                unreachable!("Expected Enum")
+            };
+
+            
+            result.push(core_annotated::TopLevelStatement::Enum(enum_));
         }
 
         Ok(result)
@@ -434,7 +441,11 @@ impl TypeChecker {
 
             let constructor_type = create_constructor_type(fields.clone(), enum_type.clone());
 
-            self.add_global_type(&vec![enum_name, name], Rc::new(RefCell::new(constructor_type)));
+            if enum_name.contains("struct-") {
+                self.add_global_type(&vec![name], Rc::new(RefCell::new(constructor_type)));
+            } else {
+                self.add_global_type(&vec![enum_name, name], Rc::new(RefCell::new(constructor_type)));
+            }
             
             
             result.push(core_annotated::Variant::new(name, fields, *start, *end));
@@ -1843,7 +1854,27 @@ impl TypeChecker {
                 Ok(core_annotated::Pattern::Wildcard)
             }
             core_annotated::Pattern::Constructor { name, fields } => {
-                todo!("Lookup constructor via name and match on fields")
+                let PathName { segments, start, end } = &name;
+                let constructor = self.get_type(&segments);
+
+                let Some(constructor) = constructor else {
+                    todo!("Report constructor not existing")
+                };
+                let constructor_ty = constructor.borrow();
+                if !constructor_ty.is_function() {
+                    todo!("Report constructor isn't function")
+                }
+
+                let params = constructor_ty.get_function_params();
+                if params.len() != fields.len() {
+                    todo!("report missmatch of parameters and fields");
+                }
+                let mut output_fields = Vec::new();
+                for (field, param) in fields.into_iter().zip(params.into_iter()) {
+                    output_fields.push(self.check_pattern_types(field, param)?);
+                }
+
+                Ok(core_annotated::Pattern::Constructor { name, fields: output_fields })
             }
             _ => {
                 todo!("error on pattern match due to literal")

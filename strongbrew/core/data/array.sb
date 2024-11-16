@@ -168,7 +168,7 @@ pub extern "Java" fn unzip[A,B](l: Array[(A,B), _]) -> (Array[A, _], Array[B, _]
     A[] a = (A[])new Object[l.length];
     B[] b = (B[])new Object[l.length];
     for (int i = 0; i < l.length; i++) {
-        a[i] = l[i].a
+        a[i] = l[i].a;
         b[i] = l[i].b;
     }
     return new Tuple2(a, b);

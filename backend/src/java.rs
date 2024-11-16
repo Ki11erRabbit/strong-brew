@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use sb_ast::core_annotated::{BuiltinType, CallArg, Closure, Enum, Expression, ExpressionRaw, File, Function, GenericParam, IfExpr, Import, Literal, Param, PathName, Pattern, Statement, TopLevelStatement, Type, Variant, Visibility};
+use sb_ast::core_annotated::{BuiltinType, Call, CallArg, Closure, Enum, Expression, ExpressionRaw, File, Function, GenericParam, IfExpr, Import, Literal, Param, PathName, Pattern, Statement, TopLevelStatement, Type, Variant, Visibility};
 
 use either::Either;
 use crate::Codegenerator;
@@ -31,6 +31,7 @@ pub struct JavaCodegenerator {
     /// Grouped imports are used to import all of the classes created by a module.
     /// This is due to how nested classes are handled in Java.
     grouped_imports: HashMap<String, String>,
+    constructors: HashMap<Vec<String>, Vec<String>>,
 }
 
 
@@ -39,6 +40,7 @@ impl JavaCodegenerator {
         JavaCodegenerator {
             sub_classes: HashMap::new(),
             grouped_imports: HashMap::new(),
+            constructors: HashMap::new(),
         }
     }
 
@@ -106,6 +108,18 @@ impl JavaCodegenerator {
             }
         }
         output
+    }
+
+    fn add_constructor(&mut self, path: Vec<String>, constructor: String) {
+        match self.constructors.entry(path) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                let entry = entry.get_mut();
+                entry.push(constructor);
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(vec![constructor]);
+            }
+        }
     }
 
     fn add_new_import(&mut self, path: String, import: String) {
@@ -292,12 +306,13 @@ impl JavaCodegenerator {
     fn compile_content(&mut self, content: &TopLevelStatement) -> Vec<(String, String)> {
         let mut output = String::new();
         let mut output_vec = Vec::new();
+        let mut top_level_output = String::new();
         match content {
             TopLevelStatement::Import(import) => {
                 let Import { path, .. } = import;
                 let PathName { segments, .. } = path;
                 let segments: Vec<String> = segments.iter().map(|s| Self::convert_identifier(s)).collect();
-                output.push_str(format!("import static {}.*;\n", segments.join(".")).as_str());
+                top_level_output.push_str(format!("import static {}.*;\n", segments.join(".")).as_str());
             }
             TopLevelStatement::Enum(enum_) => {
                 let Enum { visibility, name, generic_params, variants, .. } = enum_;
@@ -314,6 +329,12 @@ impl JavaCodegenerator {
                 // Enums are represented as abstract classes in Java with an implementation for each variant.
                 // It should also contain constructor static methods to create each variant.
                 output.push_str("abstract class ");
+                let was_struct;
+                if name.contains("struct-") {
+                    was_struct = true;
+                } else {
+                    was_struct = false;
+                }
                 let name = Self::convert_identifier(name);
                 output.push_str(&name);
 
@@ -384,7 +405,16 @@ impl JavaCodegenerator {
 
                     let mut contructor_body = String::new();
 
+
+
                     for (i, field) in fields.into_iter().enumerate() {
+
+                        if was_struct {
+                            self.add_constructor(vec![class_name.clone()], field.name.clone());
+                        } else {
+                            self.add_constructor(vec![class_name.clone(), name.clone()], field.name.clone());
+                        }
+                        
                         variant_output.push_str("public ");
                         variant_output.push_str(self.compile_type(&field.ty).as_str());
                         variant_output.push_str(" ");
@@ -427,7 +457,11 @@ impl JavaCodegenerator {
                     constructor.push_str(new_call.as_str());
                     constructor.push_str("\n}\n");
 
-                    output.push_str(constructor.as_str());
+                    if was_struct {
+                        top_level_output.push_str(constructor.as_str());
+                    } else {
+                        output.push_str(constructor.as_str());
+                    }
 
                     output_vec.push((name.clone(), variant_output));
                 }
@@ -436,7 +470,6 @@ impl JavaCodegenerator {
                 output.push_str("\n}\n");
 
                 output_vec.insert(0, (class_name, output));
-                output = String::new();
             }
             TopLevelStatement::Const(constant) => {
                 let sb_ast::core_annotated::Const { visibility, name, ty, value, .. } = constant;
@@ -445,37 +478,37 @@ impl JavaCodegenerator {
 
                 match visibility {
                     Visibility::Public => {
-                        output.push_str("public ");
+                        top_level_output.push_str("public ");
                     }
                     Visibility::Private => {
-                        output.push_str("private ");
+                        top_level_output.push_str("private ");
                     }
                 }
-                output.push_str("static final ");
-                output.push_str(self.compile_type(ty).as_str());
-                output.push_str(" ");
-                output.push_str(segments.last().unwrap().as_str());
-                output.push_str(" = ");
-                output.push_str(self.compile_expression(value, true, InLetBinding::NA).as_str());
-                output.push_str(";\n");
+                top_level_output.push_str("static final ");
+                top_level_output.push_str(self.compile_type(ty).as_str());
+                top_level_output.push_str(" ");
+                top_level_output.push_str(segments.last().unwrap().as_str());
+                top_level_output.push_str(" = ");
+                top_level_output.push_str(self.compile_expression(value, true, InLetBinding::NA).as_str());
+                top_level_output.push_str(";\n");
 
-                output = if segments.len() > 1 {
+                top_level_output = if segments.len() > 1 {
                     let mut path = segments.clone();
                     path.pop();
-                    self.add_to_subclass(path, output);
+                    self.add_to_subclass(path, top_level_output);
                     String::new()
                 } else {
-                    output
+                    top_level_output
                 };
             }
             TopLevelStatement::Function(function) => {
-                output.push_str(self.compile_function(function).as_str());
+                top_level_output.push_str(self.compile_function(function).as_str());
             }
             TopLevelStatement::Extern(_, body) => {
-                output.push_str(body);
+                top_level_output.push_str(body);
             }
         }
-        output_vec.insert(0 ,(String::new(), output));
+        output_vec.insert(0 ,(String::new(), top_level_output));
         output_vec
     }
 
@@ -860,6 +893,34 @@ impl JavaCodegenerator {
                 let iter = patterns.iter().zip(types.iter()).zip('a'..='z');
                 for ((pattern, ty), access) in iter {
                     output.push_str(self.compile_let_pattern(pattern, ty, value, Some(access)).as_str());
+                }
+            }
+            Pattern::Constructor { name, fields } => {
+                let PathName { segments, .. } = name;
+                let Type::Tuple(types) = ty else {
+                    unreachable!("Constructor pattern must have a tuple type")
+                };
+
+                let constructor = self.constructors.get(segments).unwrap().clone();
+                let iter = fields.iter().zip(constructor.iter()).zip(types.iter());
+                for ((field, constructor), ty) in iter {
+
+                    let mut segments = segments[..segments.len() - 1].to_vec();
+                    segments.push(constructor.clone());
+                    let expression = Expression::new(ExpressionRaw::Call(Call {
+                        name: Box::new(ExpressionRaw::Variable(PathName {
+                            segments: segments.clone(),
+                            start: 0,
+                            end: 0,
+                        })),
+                        args: vec![CallArg::new(None, Either::Right(value.clone()), 0, 0)],
+                        type_args: vec![],
+                        start: 0,
+                        end: 0,
+
+                    }), ty);
+                    
+                    output.push_str(self.compile_let_pattern(field, ty, &expression, None).as_str());
                 }
             }
             _ => todo!("Implement pattern matching for let statement"),

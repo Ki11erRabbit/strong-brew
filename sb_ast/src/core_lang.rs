@@ -656,7 +656,7 @@ fn convert_struct_to_enum(struct_: inner::Struct) -> TopLevelStatement {
     let variants = vec![
         Variant::new(name, fields, start, end)
             ];
-    Enum::new(visibility, name, generic_params, variants, start, end)
+    Enum::new(visibility, &format!("struct-{}",name), generic_params, variants, start, end)
 }
 
 fn convert_function(function: inner::Function) -> TopLevelStatement {
