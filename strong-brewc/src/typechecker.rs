@@ -389,7 +389,8 @@ impl TypeChecker {
             let ty = Type::User(PathName::new(&vec![name], *start, *end));
             let param = Param::new(false, &field.name, ty, 0, 0);
             let getter_type = create_function_type(vec![param], field.ty.clone());
-            self.add_global_type(&vec![&field.name], Rc::new(RefCell::new(getter_type)));
+            self.add_global_type(&vec![&name, &field.name], Rc::new(RefCell::new(getter_type)));
+            self.add_overload(&field.name, &vec![name, &field.name]);
             equivalent_type.push(field.ty.clone());
         }
 

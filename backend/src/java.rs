@@ -32,6 +32,7 @@ pub struct JavaCodegenerator {
     /// This is due to how nested classes are handled in Java.
     grouped_imports: HashMap<String, String>,
     constructors: HashMap<Vec<String>, Vec<String>>,
+    tags_for_enum: HashMap<String, HashMap<String, usize>>,
 }
 
 
@@ -41,6 +42,7 @@ impl JavaCodegenerator {
             sub_classes: HashMap::new(),
             grouped_imports: HashMap::new(),
             constructors: HashMap::new(),
+            tags_for_enum: HashMap::new(),
         }
     }
 
@@ -118,6 +120,20 @@ impl JavaCodegenerator {
             }
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(vec![constructor]);
+            }
+        }
+    }
+
+    fn add_tag_for_enum(&mut self, enum_name: String, tag: String, value: usize) {
+        match self.tags_for_enum.entry(enum_name) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                let entry = entry.get_mut();
+                entry.insert(tag, value);
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                let mut map = HashMap::new();
+                map.insert(tag, value);
+                entry.insert(map);
             }
         }
     }
@@ -416,7 +432,7 @@ impl JavaCodegenerator {
                         constructor_body.push_str(", ");
                         internal_constructor.push_str(", ");
                     }
-                    top_level_output.push_str(getter.as_str());
+                    output.push_str(getter.as_str());
                     top_level_output.push_str("\n");
                 }
 
@@ -464,9 +480,11 @@ impl JavaCodegenerator {
                 
                 output.push_str(" {\n");
 
+                output.push_str("public abstract int tag();\n");
+
                 // We need to backup the class name as we need to use it in the constructor functions.
                 let class_name = name;
-                for variant in variants {
+                for (i, variant) in variants.into_iter().enumerate() {
                     let mut variant_output = String::new();
                     let Variant { name, fields, .. } = variant;
                     let name = Self::convert_identifier(name);
@@ -505,6 +523,16 @@ impl JavaCodegenerator {
                     }
                     
                     variant_output.push_str(" {\n");
+
+                    variant_output.push_str("@Override\n");
+                    variant_output.push_str("public int tag() {\n");
+                    variant_output.push_str("return ");
+                    variant_output.push_str(&format!("{}", i));
+                    variant_output.push_str(";\n}\n");
+
+                    self.add_tag_for_enum(class_name.clone(), name.clone(), i);
+                    
+                    
                     let mut internal_constructor = String::from("public ");
                     let mut new_call = String::new();
                     if !generic_params.is_empty() {
@@ -1015,11 +1043,11 @@ impl JavaCodegenerator {
                 let iter = fields.iter().zip(constructor.iter()).zip(types.iter());
                 for ((field, constructor), ty) in iter {
 
-                    let mut segments = segments[..segments.len() - 1].to_vec();
+                    let mut segments = segments.clone();
                     segments.push(constructor.clone());
                     let expression = Expression::new(ExpressionRaw::Call(Call {
                         name: Box::new(ExpressionRaw::Variable(PathName {
-                            segments: segments.clone(),
+                            segments,
                             start: 0,
                             end: 0,
                         })),
