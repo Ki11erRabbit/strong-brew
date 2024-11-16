@@ -6,3 +6,18 @@ pub enum Maybe[T: type] {
     Just(just: T),
     Nothing
 }
+
+
+pub fn is-nothing[T: type](m: Maybe[T]) -> Bool {
+    match m {
+        Just(_) -> false,
+        Nothing -> true
+    }
+}
+
+pub fn is-just[T: type](m: Maybe[T]) -> Bool {
+    match m {
+        Just(_) -> true,
+        Nothing -> false
+    }
+}
