@@ -1,3 +1,5 @@
+mod match_generator;
+
 use std::collections::HashMap;
 
 use sb_ast::core_annotated::{BuiltinType, Call, CallArg, Closure, Enum, Expression, ExpressionRaw, Field, File, Function, GenericParam, IfExpr, Import, Literal, MatchArm, MatchExpr, Param, PathName, Pattern, Statement, Struct, TopLevelStatement, Type, Variant, Visibility};
